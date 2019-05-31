@@ -240,31 +240,8 @@ func (td *TestData) ScanArgs(t *testing.T, key string, dests ...interface{}) {
 	}
 
 	for i := range dests {
-		val := arg.Vals[i]
-		switch dest := dests[i].(type) {
-		case *string:
-			*dest = val
-		case *int:
-			n, err := strconv.ParseInt(val, 10, 64)
-			if err != nil {
-				t.Fatal(err)
-			}
-			*dest = int(n) // assume 64bit ints
-		case *uint64:
-			n, err := strconv.ParseUint(val, 10, 64)
-			if err != nil {
-				t.Fatal(err)
-			}
-			*dest = n
-		case *bool:
-			b, err := strconv.ParseBool(val)
-			if err != nil {
-				t.Fatal(err)
-			}
-			*dest = b
-		default:
-			t.Fatalf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
-		}
+		arg.Scan(t, i, dests[i])
+
 	}
 }
 
@@ -288,6 +265,38 @@ func (arg CmdArg) String() string {
 
 	default:
 		return fmt.Sprintf("%s=(%s)", arg.Key, strings.Join(arg.Vals, ", "))
+	}
+}
+
+// Scan attempts to parse the value at index i into the dest.
+func (arg CmdArg) Scan(t *testing.T, i int, dest interface{}) {
+	if i < 0 || i >= len(arg.Vals) {
+		t.Fatalf("cannot scan index %d of key %s", i, arg.Key)
+	}
+	val := arg.Vals[i]
+	switch dest := dest.(type) {
+	case *string:
+		*dest = val
+	case *int:
+		n, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*dest = int(n) // assume 64bit ints
+	case *uint64:
+		n, err := strconv.ParseUint(val, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*dest = n
+	case *bool:
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*dest = b
+	default:
+		t.Fatalf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
 	}
 }
 
