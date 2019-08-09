@@ -29,9 +29,28 @@ sentence
 Did the following: make sentence
 1 hungry monkey eats a 🍌
 while 12 other monkeys watch greedily
+
+# Some testing of sensitivity to newlines
+foo
+----
+unknown command
+
+bar
+----
+unknown command
+
+
+
+
+bar
+----
+unknown command
 `
 
-	RunTestFromString(t, input, func(d *TestData) string {
+	f := func(d *TestData) string {
+		if d.Input != "sentence" {
+			return "unknown command"
+		}
 		var one int
 		var twelve int
 		var banana string
@@ -42,5 +61,7 @@ while 12 other monkeys watch greedily
 		return fmt.Sprintf("Did the following: %s %s\n%d hungry monkey eats a %s\nwhile %d other monkeys watch %s\n",
 			d.Cmd, d.Input, one, banana, twelve, greedily,
 		)
-	})
+	}
+
+	RunTestFromString(t, input, f)
 }

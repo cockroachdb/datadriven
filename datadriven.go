@@ -102,7 +102,11 @@ func runTestInternal(
 						panic(r)
 					}
 				}()
-				return f(d)
+				actual := f(d)
+				if !strings.HasSuffix(actual, "\n") {
+					actual += "\n"
+				}
+				return actual
 			}()
 
 			if r.rewrite != nil {
