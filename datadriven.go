@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -188,6 +189,10 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 		t.Fatal(err)
 	}
 	if !finfo.IsDir() {
+		if tempFileRe.MatchString(finfo.Name()) {
+			// Temp or hidden file, don't even try processing.
+			return
+		}
 		f(t, path)
 		return
 	}
@@ -201,6 +206,9 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 		})
 	}
 }
+
+// Ignore files named .XXXX, XXX~ or #XXX#.
+var tempFileRe = regexp.MustCompile(`(^\..*)|(.*~$)|(^#.*#$)`)
 
 // TestData contains information about one data-driven test case that was
 // parsed from the test file.
