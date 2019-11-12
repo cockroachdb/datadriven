@@ -93,7 +93,8 @@ func runTestInternal(
 	t.Helper()
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
-	for r.Next(t) {
+	continueRunning := true
+	for continueRunning && r.Next(t) {
 		t.Run("", func(t *testing.T) {
 			d := &r.data
 			actual := func() string {
@@ -110,6 +111,19 @@ func runTestInternal(
 				return actual
 			}()
 
+			if t.Failed() {
+				// If the test has failed with .Error(), then we can't hope it
+				// will have produced a useful actual output, so trying to do
+				// something with it here would pile up more errors without
+				// value.
+				// Moreover, we can't expect any subsequent test to be even
+				// able to start. Stop processing the file in that case.
+				continueRunning = false
+				return
+			}
+
+			// The test has not failed, we can analyze the expected
+			// output.
 			if r.rewrite != nil {
 				r.emit("----")
 				if hasBlankLine(actual) {
@@ -213,14 +227,23 @@ var tempFileRe = regexp.MustCompile(`(^\..*)|(.*~$)|(^#.*#$)`)
 // TestData contains information about one data-driven test case that was
 // parsed from the test file.
 type TestData struct {
-	Pos string // reader and line number
+	// Pos is a file:line prefix for the input test file, suitable for
+	// inclusion in logs and error messages.
+	Pos string
 
 	// Cmd is the first string on the directive line (up to the first whitespace).
 	Cmd string
 
+	// CmdArgs contains the k/v arguments to the command.
 	CmdArgs []CmdArg
 
-	Input    string
+	// Input is the text between the first directive line and the ---- separator.
+	Input string
+	// Expected is the value below the ---- separator. In most cases,
+	// tests need not check this, and instead return their own actual
+	// output.
+	// This field is provided so that a test can perform an early return
+	// with "return d.Expected" to signal that nothing has changed.
 	Expected string
 }
 
