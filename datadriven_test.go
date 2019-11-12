@@ -19,17 +19,8 @@ import (
 	"testing"
 )
 
-func TestDataDriven(t *testing.T) {
-	input := `
-# NB: we allow duplicate args. It's unclear at this time whether this is useful,
-# either way, ScanArgs simply picks the first occurrence.
-make argTuple=(1, 🍌) argInt=12 argString=greedily argString=totally_ignored
-sentence
-----
-Did the following: make sentence
-1 hungry monkey eats a 🍌
-while 12 other monkeys watch greedily
-
+func TestNewLineBetweenDirectives(t *testing.T) {
+	RunTestFromString(t, `
 # Some testing of sensitivity to newlines
 foo
 ----
@@ -45,12 +36,26 @@ unknown command
 bar
 ----
 unknown command
-`
-
-	f := func(d *TestData) string {
+`, func(d *TestData) string {
 		if d.Input != "sentence" {
 			return "unknown command"
 		}
+		return ""
+	})
+}
+
+func TestArgFormat(t *testing.T) {
+	RunTestFromString(t, `
+# NB: we allow duplicate args.
+# ScanArgs simply picks the first occurrence.
+make argTuple=(1, 🍌) argInt=12 argString=greedily,impatient argString=totally_ignored moreIgnore= a,b,c
+sentence
+----
+Did the following: make sentence
+1 hungry monkey eats a 🍌
+while 12 other monkeys watch greedily,impatient
+true I'd say
+`, func(d *TestData) string {
 		var one int
 		var twelve int
 		var banana string
@@ -58,10 +63,12 @@ unknown command
 		d.ScanArgs(t, "argTuple", &one, &banana)
 		d.ScanArgs(t, "argInt", &twelve)
 		d.ScanArgs(t, "argString", &greedily)
-		return fmt.Sprintf("Did the following: %s %s\n%d hungry monkey eats a %s\nwhile %d other monkeys watch %s\n",
-			d.Cmd, d.Input, one, banana, twelve, greedily,
+		abc := d.HasArg("a,b,c")
+		return fmt.Sprintf(`Did the following: %s %s
+%d hungry monkey eats a %s
+while %d other monkeys watch %s
+%v I'd say`,
+			d.Cmd, d.Input, one, banana, twelve, greedily, abc,
 		)
-	}
-
-	RunTestFromString(t, input, f)
+	})
 }

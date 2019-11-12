@@ -224,6 +224,16 @@ type TestData struct {
 	Expected string
 }
 
+// HasArg checks whether the CmdArgs array contains an entry for the given key.
+func (td *TestData) HasArg(key string) bool {
+	for i := range td.CmdArgs {
+		if td.CmdArgs[i].Key == key {
+			return true
+		}
+	}
+	return false
+}
+
 // ScanArgs looks up the first CmdArg matching the given key and scans it into
 // the given destinations in order. If the arg does not exist, the number of
 // destinations does not match that of the arguments, or a destination can not
@@ -258,7 +268,6 @@ func (td *TestData) ScanArgs(t *testing.T, key string, dests ...interface{}) {
 
 	for i := range dests {
 		arg.Scan(t, i, dests[i])
-
 	}
 }
 
