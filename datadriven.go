@@ -93,7 +93,8 @@ func runTestInternal(
 	t.Helper()
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
-	for r.Next(t) {
+	continueRunning := true
+	for continueRunning && r.Next(t) {
 		t.Run("", func(t *testing.T) {
 			d := &r.data
 			actual := func() string {
@@ -103,6 +104,9 @@ func runTestInternal(
 						panic(r)
 					}
 				}()
+				// See comments on this flag's definition to understand what
+				// this does.
+				d.ContinueAfterError = false
 				actual := f(d)
 				if !strings.HasSuffix(actual, "\n") {
 					actual += "\n"
@@ -110,25 +114,42 @@ func runTestInternal(
 				return actual
 			}()
 
-			if r.rewrite != nil {
-				r.emit("----")
-				if hasBlankLine(actual) {
-					r.emit("----")
-					r.rewrite.WriteString(actual)
-					r.emit("----")
-					r.emit("----")
-				} else {
-					r.emit(actual)
+			if t.Failed() {
+				// If the test has failed with .Error(), then we can't hope it
+				// will have produced a useful actual output, so trying to do
+				// something with it here would pile up more errors without
+				// value.
+
+				// Moreover, unless the test is telling us to continue after
+				// an error, we can't expect any subsequent test to be even
+				// able to start. Stop processing the file in that case.
+				if !d.ContinueAfterError {
+					continueRunning = false
+					return
 				}
-			} else if d.Expected != actual {
-				t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
-			} else if testing.Verbose() {
-				input := d.Input
-				if input == "" {
-					input = "<no input to command>"
+			} else {
+				// The test has not failed, we can analyze the expected
+				// output.
+				if r.rewrite != nil {
+					r.emit("----")
+					if hasBlankLine(actual) {
+						r.emit("----")
+						r.rewrite.WriteString(actual)
+						r.emit("----")
+						r.emit("----")
+					} else {
+						r.emit(actual)
+					}
+				} else if d.Expected != actual {
+					t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+				} else if testing.Verbose() {
+					input := d.Input
+					if input == "" {
+						input = "<no input to command>"
+					}
+					// TODO(tbg): it's awkward to reproduce the args, but it would be helpful.
+					fmt.Printf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
 				}
-				// TODO(tbg): it's awkward to reproduce the args, but it would be helpful.
-				fmt.Printf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
 			}
 		})
 		if t.Failed() {
@@ -213,15 +234,41 @@ var tempFileRe = regexp.MustCompile(`(^\..*)|(.*~$)|(^#.*#$)`)
 // TestData contains information about one data-driven test case that was
 // parsed from the test file.
 type TestData struct {
-	Pos string // reader and line number
+	// Pos is a file:line prefix for the input test file, suitable for
+	// inclusion in logs and error messages.
+	Pos string
 
 	// Cmd is the first string on the directive line (up to the first whitespace).
 	Cmd string
 
+	// CmdArgs contains the k/v arguments to the command.
 	CmdArgs []CmdArg
 
-	Input    string
+	// Input is the text between the first directive line and the ---- separator.
+	Input string
+	// Expected is the value below the ---- separator. In most cases,
+	// tests need not check this, and instead return their own actual
+	// output.
+	// This field is provided so that a test can perform an early return
+	// with "return d.Expected" to signal that nothing has changed.
 	Expected string
+
+	// ContinueAfterError can be set by a test to indicate whether to
+	// continue processing the input file after t.Error() has been
+	// called. It defaults to false (stop processing the input upon
+	// t.Error).
+	//
+	// A reminder about error in tests:
+	//
+	// - a test that expects an error should not call t.Error() and
+	//   instead print out the text of the expected error in the returned
+	//   actual string. This type of error is unimpacted by ContinueAfterError.
+	// - t.Error() should be called if a test encounters an unexpected
+	//   test failure; this also causes the testing to stop even when
+	//   -rewrite is set. This is the type of error where
+	//   ContinueAfterError determines what the datadriven harness does
+	//   after the error occurs.
+	ContinueAfterError bool
 }
 
 // HasArg checks whether the CmdArgs array contains an entry for the given key.
