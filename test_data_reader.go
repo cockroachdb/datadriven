@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -70,32 +69,18 @@ func (r *testDataReader) Next(t *testing.T) bool {
 			line = strings.TrimSuffix(line, `\`) + " " + strings.TrimSpace(nextLine)
 		}
 
-		fields := r.splitDirectives(t, line)
-		if len(fields) == 0 {
+		pos := fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
+		cmd, args, err := ParseLine(pos, line)
+		if err != nil {
+			t.Fatalf("%s: %v", pos, err)
+		}
+		if cmd == "" {
+			// Nothing to do here.
 			continue
 		}
-		cmd := fields[0]
-		r.data.Pos = fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
+		r.data.Pos = pos
 		r.data.Cmd = cmd
-
-		for _, arg := range fields[1:] {
-			key := arg
-			var vals []string
-			if pos := strings.IndexByte(key, '='); pos >= 0 {
-				key = arg[:pos]
-				val := arg[pos+1:]
-
-				if len(val) > 2 && val[0] == '(' && val[len(val)-1] == ')' {
-					vals = strings.Split(val[1:len(val)-1], ",")
-					for i := range vals {
-						vals[i] = strings.TrimSpace(vals[i])
-					}
-				} else {
-					vals = []string{val}
-				}
-			}
-			r.data.CmdArgs = append(r.data.CmdArgs, CmdArg{Key: key, Vals: vals})
-		}
+		r.data.CmdArgs = args
 
 		var buf bytes.Buffer
 		var separator bool
@@ -177,26 +162,4 @@ func (r *testDataReader) emit(s string) {
 		r.rewrite.WriteString(s)
 		r.rewrite.WriteString("\n")
 	}
-}
-
-var splitDirectivesRE = regexp.MustCompile(`^ *[a-zA-Z0-9_,-\.]+(|=[-a-zA-Z0-9_@]+|=\([^)]*\))( |$)`)
-
-// splits a directive line into tokens, where each token is
-// either:
-//  - a,list,of,things
-//  - argument
-//  - argument=value
-//  - argument=(values, ...)
-func (r *testDataReader) splitDirectives(t *testing.T, line string) []string {
-	var res []string
-
-	for line != "" {
-		str := splitDirectivesRE.FindString(line)
-		if len(str) == 0 {
-			t.Fatalf("%s:%d cannot parse directive %s\n", r.sourceName, r.scanner.line, line)
-		}
-		res = append(res, strings.TrimSpace(line[0:len(str)]))
-		line = line[len(str):]
-	}
-	return res
 }
