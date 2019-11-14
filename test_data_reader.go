@@ -70,7 +70,7 @@ func (r *testDataReader) Next(t *testing.T) bool {
 			line = strings.TrimSuffix(line, `\`) + " " + strings.TrimSpace(nextLine)
 		}
 
-		fields := splitDirectives(t, line)
+		fields := r.splitDirectives(t, line)
 		if len(fields) == 0 {
 			continue
 		}
@@ -187,13 +187,13 @@ var splitDirectivesRE = regexp.MustCompile(`^ *[a-zA-Z0-9_,-\.]+(|=[-a-zA-Z0-9_@
 //  - argument
 //  - argument=value
 //  - argument=(values, ...)
-func splitDirectives(t *testing.T, line string) []string {
+func (r *testDataReader) splitDirectives(t *testing.T, line string) []string {
 	var res []string
 
 	for line != "" {
 		str := splitDirectivesRE.FindString(line)
 		if len(str) == 0 {
-			t.Fatalf("cannot parse directive %s\n", line)
+			t.Fatalf("%s:%d cannot parse directive %s\n", r.sourceName, r.scanner.line, line)
 		}
 		res = append(res, strings.TrimSpace(line[0:len(str)]))
 		line = line[len(str):]
