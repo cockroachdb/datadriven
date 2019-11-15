@@ -17,6 +17,8 @@ package datadriven
 import (
 	"fmt"
 	"testing"
+
+	"github.com/cockroachdb/errors"
 )
 
 func TestNewLineBetweenDirectives(t *testing.T) {
@@ -44,11 +46,36 @@ unknown command
 	})
 }
 
+func TestParseLine(t *testing.T) {
+	RunTestFromString(t, `
+parse
+xx +++
+----
+here: cannot parse directive at column 4: xx +++
+
+parse
+xx a=b a=c
+----
+here: duplicate key in argument list: a=c
+
+parse
+xx a=b b=c c=(1,2,3)
+----
+"xx" [a=b b=c c=(1, 2, 3)]
+`, func(d *TestData) string {
+		cmd, args, err := ParseLine(d.Input)
+		if err != nil {
+			return errors.Wrap(err, "here").Error()
+		}
+		return fmt.Sprintf("%q %+v", cmd, args)
+	})
+}
+
 func TestArgFormat(t *testing.T) {
 	RunTestFromString(t, `
 # NB: we allow duplicate args.
 # ScanArgs simply picks the first occurrence.
-make argTuple=(1, 🍌) argInt=12 argString=greedily,impatient argString=totally_ignored moreIgnore= a,b,c
+make argTuple=(1, 🍌) argInt=12 argString=greedily,impatient moreIgnore= a,b,c
 sentence
 ----
 Did the following: make sentence
