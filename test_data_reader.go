@@ -70,7 +70,7 @@ func (r *testDataReader) Next(t *testing.T) bool {
 		}
 
 		pos := fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
-		cmd, args, err := ParseLine(pos, line)
+		cmd, args, err := ParseLine(line)
 		if err != nil {
 			t.Fatalf("%s: %v", pos, err)
 		}

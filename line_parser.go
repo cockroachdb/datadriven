@@ -23,26 +23,28 @@ import (
 
 // ParseLine parses a line of datadriven input language and returns
 // the parsed command and CmdArgs.
-//
-// Note: the parser does not de-duplicate multiple k=v arguments with
-// the same key. This feature can be used with the ordered behavior of
-// HasArg/ScanArg to implement scoping and precedence.
-func ParseLine(pos, line string) (cmd string, cmdArgs []CmdArg, err error) {
-	fields, err := splitDirectives(pos, line)
+// Duplicate k=v arguments are rejected.
+func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
+	fields, err := splitDirectives(line)
 	if err != nil {
-		return "", nil, nil
+		return "", nil, err
 	}
 	if len(fields) == 0 {
 		return "", nil, nil
 	}
 	cmd = fields[0]
 
+	seenArgs := make(map[string]struct{})
 	for _, arg := range fields[1:] {
 		key := arg
 		var vals []string
 		if pos := strings.IndexByte(key, '='); pos >= 0 {
 			key = arg[:pos]
 			val := arg[pos+1:]
+			if _, ok := seenArgs[key]; ok {
+				return "", nil, errors.Newf("duplicate key in argument list: %s", arg)
+			}
+			seenArgs[key] = struct{}{}
 
 			if len(val) > 2 && val[0] == '(' && val[len(val)-1] == ')' {
 				vals = strings.Split(val[1:len(val)-1], ",")
@@ -67,13 +69,15 @@ var splitDirectivesRE = regexp.MustCompile(`^ *[-a-zA-Z0-9_,\.]+(|=[-a-zA-Z0-9_@
 //  - argument=a,b,c,d        # this is just one value string
 //  - argument=               # = empty value string
 //  - argument=(values, ...)  # a comma-separated array of value strings
-func splitDirectives(pos, line string) ([]string, error) {
+func splitDirectives(line string) ([]string, error) {
 	var res []string
 
+	origLine := line
 	for line != "" {
 		str := splitDirectivesRE.FindString(line)
 		if len(str) == 0 {
-			return nil, errors.Newf("%s: cannot parse directive: %s", pos, line)
+			column := len(origLine) - len(line) + 1
+			return nil, errors.Newf("cannot parse directive at column %d: %s", column, origLine)
 		}
 		res = append(res, strings.TrimSpace(line[0:len(str)]))
 		line = line[len(str):]
