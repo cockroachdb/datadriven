@@ -23,7 +23,6 @@ import (
 
 // ParseLine parses a line of datadriven input language and returns
 // the parsed command and CmdArgs.
-// Duplicate k=v arguments are rejected.
 func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
 	fields, err := splitDirectives(line)
 	if err != nil {
@@ -34,17 +33,12 @@ func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
 	}
 	cmd = fields[0]
 
-	seenArgs := make(map[string]struct{})
 	for _, arg := range fields[1:] {
 		key := arg
 		var vals []string
 		if pos := strings.IndexByte(key, '='); pos >= 0 {
 			key = arg[:pos]
 			val := arg[pos+1:]
-			if _, ok := seenArgs[key]; ok {
-				return "", nil, errors.Newf("duplicate key in argument list: %s", arg)
-			}
-			seenArgs[key] = struct{}{}
 
 			if len(val) > 2 && val[0] == '(' && val[len(val)-1] == ')' {
 				vals = strings.Split(val[1:len(val)-1], ",")

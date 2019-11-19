@@ -56,7 +56,7 @@ here: cannot parse directive at column 4: xx +++
 parse
 xx a=b a=c
 ----
-here: duplicate key in argument list: a=c
+"xx" [a=b a=c]
 
 parse
 xx a=b b=c c=(1,2,3)
