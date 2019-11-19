@@ -105,7 +105,7 @@ func runTestInternal(
 					}
 				}()
 				actual := f(d)
-				if !strings.HasSuffix(actual, "\n") {
+				if actual != "" && !strings.HasSuffix(actual, "\n") {
 					actual += "\n"
 				}
 				return actual
