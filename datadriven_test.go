@@ -38,7 +38,7 @@ unknown command
 bar
 ----
 unknown command
-`, func(d *TestData) string {
+`, func(t *testing.T, d *TestData) string {
 		if d.Input != "sentence" {
 			return "unknown command"
 		}
@@ -62,12 +62,24 @@ parse
 xx a=b b=c c=(1,2,3)
 ----
 "xx" [a=b b=c c=(1, 2, 3)]
-`, func(d *TestData) string {
+`, func(t *testing.T, d *TestData) string {
 		cmd, args, err := ParseLine(d.Input)
 		if err != nil {
 			return errors.Wrap(err, "here").Error()
 		}
 		return fmt.Sprintf("%q %+v", cmd, args)
+	})
+}
+
+func TestSubTestSkip(t *testing.T) {
+	RunTestFromString(t, `
+error
+----
+`, func(t *testing.T, d *TestData) string {
+		// Verify that calling t.Skip() does not fail with an API error on
+		// testing.T.
+		t.Skip("woo")
+		return d.Expected
 	})
 }
 
@@ -82,7 +94,7 @@ Did the following: make sentence
 1 hungry monkey eats a 🍌
 while 12 other monkeys watch greedily,impatient
 true I'd say
-`, func(d *TestData) string {
+`, func(t *testing.T, d *TestData) string {
 		var one int
 		var twelve int
 		var banana string

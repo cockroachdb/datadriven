@@ -64,10 +64,27 @@ var (
 // To execute data-driven tests, pass the path of the test file as well as a
 // function which can interpret and execute whatever commands are present in
 // the test file. The framework invokes the function, passing it information
-// about the test case in a TestData struct. The function then returns the
-// actual results of the case, which this function compares with the expected
-// results, and either succeeds or fails the test.
-func RunTest(t *testing.T, path string, f func(d *TestData) string) {
+// about the test case in a TestData struct.
+//
+// The function must returns the actual results of the case, which
+// RunTest() compares with the expected results. If the two are not
+// equal, the test is marked to fail.
+//
+// Note that RunTest() creates a sub-instance of testing.T for each
+// directive in the input file. It is thus unsafe/invalid to call
+// e.g. Fatal() or Skip() on the parent testing.T from inside the
+// callback function. Use the provided testing.T instance instead.
+//
+// It is possible for a test to test for an "expected error" as follows:
+// - run the code to test
+// - if an error occurs, report the detail of the error as actual
+//   output.
+// - place the expected error details in the expected results
+//   in the input file.
+//
+// It is also possible for a test to report an _unexpected_ test
+// error by calling t.Error().
+func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string) {
 	t.Helper()
 	file, err := os.OpenFile(path, os.O_RDWR, 0644 /* irrelevant */)
 	if err != nil {
@@ -82,29 +99,41 @@ func RunTest(t *testing.T, path string, f func(d *TestData) string) {
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
 // directly.
-func RunTestFromString(t *testing.T, input string, f func(d *TestData) string) {
+func RunTestFromString(t *testing.T, input string, f func(t *testing.T, d *TestData) string) {
 	t.Helper()
 	runTestInternal(t, "<string>" /* optionalPath */, strings.NewReader(input), f, *rewriteTestFiles)
 }
 
 func runTestInternal(
-	t *testing.T, sourceName string, reader io.Reader, f func(d *TestData) string, rewrite bool,
+	t *testing.T,
+	sourceName string,
+	reader io.Reader,
+	f func(t *testing.T, d *TestData) string,
+	rewrite bool,
 ) {
 	t.Helper()
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
 	continueRunning := true
 	for continueRunning && r.Next(t) {
+		subTestSkipped := false
 		t.Run("", func(t *testing.T) {
 			d := &r.data
 			actual := func() string {
 				defer func() {
 					if r := recover(); r != nil {
+						if t.Skipped() {
+							// The skip status does not propagate to the parent test
+							// automatically. If we want to catch the skip outside
+							// of the sub-test below, we need to remember it here.
+							subTestSkipped = true
+						}
+
 						fmt.Printf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 						panic(r)
 					}
 				}()
-				actual := f(d)
+				actual := f(t, d)
 				if actual != "" && !strings.HasSuffix(actual, "\n") {
 					actual += "\n"
 				}
@@ -145,6 +174,9 @@ func runTestInternal(
 				fmt.Printf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
 			}
 		})
+		if subTestSkipped {
+			t.SkipNow()
+		}
 		if t.Failed() {
 			t.FailNow()
 		}
