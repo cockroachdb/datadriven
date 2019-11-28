@@ -71,7 +71,7 @@ xx a=b b=c c=(1,2,3)
 	})
 }
 
-func TestSubTestSkip(t *testing.T) {
+func TestSkip(t *testing.T) {
 	RunTestFromString(t, `
 skip
 ----
@@ -120,4 +120,31 @@ while %d other monkeys watch %s
 			d.Cmd, d.Input, one, banana, twelve, greedily, abc,
 		)
 	})
+}
+
+func TestSubTest(t *testing.T) {
+	foundData := false
+	Walk(t, "testdata", func(t *testing.T, path string) {
+		foundData = true
+		RunTest(t, path, func(t *testing.T, d *TestData) string {
+			switch d.Cmd {
+			case "hello":
+				return d.CmdArgs[0].Key + " was said"
+			case "skip":
+				// Verify that calling t.Skip() does not fail with an API error on
+				// testing.T.
+				t.Skip("woo")
+			case "error":
+				// The skip should mask the error afterwards.
+				t.Error("never reached")
+			default:
+				t.Fatalf("unknown directive: %s", d.Cmd)
+			}
+			return d.Expected
+		})
+	})
+
+	if !foundData {
+		t.Fatalf("no data file found")
+	}
 }

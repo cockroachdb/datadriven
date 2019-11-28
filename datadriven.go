@@ -114,18 +114,8 @@ func runTestInternal(
 	t.Helper()
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
-	stopNow := false
-	for !stopNow && r.Next(t) {
-		subTestSkipped := false
-		t.Run("", func(t *testing.T) {
-			runDirective(t, r, f, &stopNow, &subTestSkipped)
-		})
-		if subTestSkipped {
-			t.SkipNow()
-		}
-		if t.Failed() {
-			t.FailNow()
-		}
+	for r.Next(t) {
+		runDirectiveOrSubTest(t, r, "" /*mandatorySubTestPrefix*/, f)
 	}
 
 	if r.rewrite != nil {
@@ -149,29 +139,129 @@ func runTestInternal(
 	}
 }
 
+// runDirectiveOrSubTest runs either a "subtest" directive or an
+// actual test directive. The "mandatorySubTestPrefix" argument indicates
+// a mandatory prefix required from all sub-test names at this point.
+func runDirectiveOrSubTest(
+	t *testing.T,
+	r *testDataReader,
+	mandatorySubTestPrefix string,
+	f func(*testing.T, *TestData) string,
+) {
+	if subTestName, ok := isSubTestStart(t, r, mandatorySubTestPrefix); ok {
+		runSubTest(subTestName, t, r, f)
+	} else {
+		runDirective(t, r, f)
+	}
+	if t.Failed() {
+		// If a test has failed with .Error(), we can't expect any
+		// subsequent test to be even able to start. Stop processing the
+		// file in that case.
+		t.FailNow()
+	}
+}
+
+func runSubTest(
+	subTestName string, t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string,
+) {
+	// Remember the current reader position in case we need to spell out
+	// an error message below.
+	subTestStartPos := r.data.Pos
+	// seenSubTestEnd is used below to verify that a "subtest end" directive
+	// has been detected (as opposed to EOF).
+	seenSubTestEnd := false
+	// seenSkip is used below to verify that "Skip" has not been used
+	// inside a subtest. See below for details.
+	seenSkip := false
+
+	// Begin the sub-test.
+	t.Run(subTestName, func(t *testing.T) {
+		defer func() {
+			// Skips are signalled using Goexit() so we must catch it /
+			// remember it here.
+			if t.Skipped() {
+				seenSkip = true
+			}
+		}()
+
+		for r.Next(t) {
+			if isSubTestEnd(t, r) {
+				seenSubTestEnd = true
+				return
+			}
+			runDirectiveOrSubTest(t, r, subTestName+"/" /*mandatorySubTestPrefix*/, f)
+		}
+	})
+
+	if seenSkip {
+		// t.Skip() is not yet supported inside a subtest. To add
+		// this functionality the following extra complexity is needed:
+		// - the test reader must continue to read after the skip
+		//   until the end of the subtest, and ignore all the directives in-between.
+		// - the rewrite logic must be careful to keep the input as-is
+		//   for the skipped sub-test, while proceeding to rewrite for
+		//   non-skipped tests.
+		r.data.Fatalf(t,
+			"cannot use t.Skip inside subtest\n%s: subtest started here", subTestStartPos)
+	}
+
+	if seenSubTestEnd && len(r.data.CmdArgs) == 2 && r.data.CmdArgs[1].Key != subTestName {
+		// If a subtest name was provided after "subtest end", ensure that it matches.
+		r.data.Fatalf(t,
+			"mismatched subtest end directive: expected %q, got %q", r.data.CmdArgs[1].Key, subTestName)
+	}
+
+	if !seenSubTestEnd && !t.Failed() {
+		// We only report missing "subtest end" if there was no error otherwise;
+		// for if there was an error, the reading would have stopped.
+		r.data.Fatalf(t,
+			"EOF encountered without subtest end directive\n%s: subtest started here", subTestStartPos)
+	}
+
+}
+
+func isSubTestStart(t *testing.T, r *testDataReader, mandatorySubTestPrefix string) (string, bool) {
+	if r.data.Cmd != "subtest" {
+		return "", false
+	}
+	if len(r.data.CmdArgs) != 1 {
+		r.data.Fatalf(t, "invalid syntax for subtest")
+	}
+	subTestName := r.data.CmdArgs[0].Key
+	if subTestName == "end" {
+		r.data.Fatalf(t, "subtest end without corresponding start")
+	}
+	if !strings.HasPrefix(subTestName, mandatorySubTestPrefix) {
+		r.data.Fatalf(t, "name of nested subtest must begin with %q", mandatorySubTestPrefix)
+	}
+	return subTestName, true
+}
+
+func isSubTestEnd(t *testing.T, r *testDataReader) bool {
+	if r.data.Cmd != "subtest" {
+		return false
+	}
+	if len(r.data.CmdArgs) == 0 || r.data.CmdArgs[0].Key != "end" {
+		return false
+	}
+	if len(r.data.CmdArgs) > 2 {
+		r.data.Fatalf(t, "invalid syntax for subtest end")
+	}
+	return true
+}
+
 // runDirective runs just one directive in the input.
 //
 // The stopNow and subTestSkipped booleans are modified by-reference
 // instead of returned because the testing module implements t.Skip
 // and t.Fatal using panics, and we're not guaranteed to get back to
 // the caller via a return in those cases.
-func runDirective(
-	t *testing.T,
-	r *testDataReader,
-	f func(*testing.T, *TestData) string,
-	stopNow, subTestSkipped *bool,
-) {
+func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string) {
 	t.Helper()
 
 	d := &r.data
 	actual := func() string {
 		defer func() {
-			if t.Skipped() {
-				// The skip status does not propagate to the parent test
-				// automatically. If we want to catch the skip outside
-				// of an enclosed sub-test, mark it now.
-				*subTestSkipped = true
-			}
 			if r := recover(); r != nil {
 				fmt.Printf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 				panic(r)
@@ -192,8 +282,7 @@ func runDirective(
 		//
 		// Moreover, we can't expect any subsequent test to be even
 		// able to start. Stop processing the file in that case.
-		*stopNow = true
-		return
+		t.FailNow()
 	}
 
 	// The test has not failed, we can analyze the expected

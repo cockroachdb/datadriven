@@ -54,7 +54,7 @@ func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
 	return cmd, cmdArgs, nil
 }
 
-var splitDirectivesRE = regexp.MustCompile(`^ *[-a-zA-Z0-9_,\.]+(|=[-a-zA-Z0-9_@=+/,\.]*|=\([^)]*\))( |$)`)
+var splitDirectivesRE = regexp.MustCompile(`^ *[-a-zA-Z0-9/_,\.]+(|=[-a-zA-Z0-9_@=+/,\.]*|=\([^)]*\))( |$)`)
 
 // splits a directive line into tokens, where each token is
 // either:
