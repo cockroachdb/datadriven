@@ -114,65 +114,11 @@ func runTestInternal(
 	t.Helper()
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
-	continueRunning := true
-	for continueRunning && r.Next(t) {
+	stopNow := false
+	for !stopNow && r.Next(t) {
 		subTestSkipped := false
 		t.Run("", func(t *testing.T) {
-			d := &r.data
-			actual := func() string {
-				defer func() {
-					if t.Skipped() {
-						// The skip status does not propagate to the parent test
-						// automatically. If we want to catch the skip outside
-						// of the sub-test below, we need to remember it here.
-						subTestSkipped = true
-					}
-					if r := recover(); r != nil {
-						fmt.Printf("\npanic during %s:\n%s\n", d.Pos, d.Input)
-						panic(r)
-					}
-				}()
-				actual := f(t, d)
-				if actual != "" && !strings.HasSuffix(actual, "\n") {
-					actual += "\n"
-				}
-				return actual
-			}()
-
-			if t.Failed() {
-				// If the test has failed with .Error(), then we can't hope it
-				// will have produced a useful actual output. Trying to do
-				// something with it here would risk corrupting the expected
-				// output.
-				//
-				// Moreover, we can't expect any subsequent test to be even
-				// able to start. Stop processing the file in that case.
-				continueRunning = false
-				return
-			}
-
-			// The test has not failed, we can analyze the expected
-			// output.
-			if r.rewrite != nil {
-				r.emit("----")
-				if hasBlankLine(actual) {
-					r.emit("----")
-					r.rewrite.WriteString(actual)
-					r.emit("----")
-					r.emit("----")
-				} else {
-					r.emit(actual)
-				}
-			} else if d.Expected != actual {
-				t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
-			} else if testing.Verbose() {
-				input := d.Input
-				if input == "" {
-					input = "<no input to command>"
-				}
-				// TODO(tbg): it's awkward to reproduce the args, but it would be helpful.
-				fmt.Printf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
-			}
+			runDirective(t, r, f, &stopNow, &subTestSkipped)
 		})
 		if subTestSkipped {
 			t.SkipNow()
@@ -201,6 +147,78 @@ func runTestInternal(
 			t.Logf("input is not a file; rewritten output is:\n%s", data)
 		}
 	}
+}
+
+// runDirective runs just one directive in the input.
+//
+// The stopNow and subTestSkipped booleans are modified by-reference
+// instead of returned because the testing module implements t.Skip
+// and t.Fatal using panics, and we're not guaranteed to get back to
+// the caller via a return in those cases.
+func runDirective(
+	t *testing.T,
+	r *testDataReader,
+	f func(*testing.T, *TestData) string,
+	stopNow, subTestSkipped *bool,
+) {
+	t.Helper()
+
+	d := &r.data
+	actual := func() string {
+		defer func() {
+			if t.Skipped() {
+				// The skip status does not propagate to the parent test
+				// automatically. If we want to catch the skip outside
+				// of an enclosed sub-test, mark it now.
+				*subTestSkipped = true
+			}
+			if r := recover(); r != nil {
+				fmt.Printf("\npanic during %s:\n%s\n", d.Pos, d.Input)
+				panic(r)
+			}
+		}()
+		actual := f(t, d)
+		if actual != "" && !strings.HasSuffix(actual, "\n") {
+			actual += "\n"
+		}
+		return actual
+	}()
+
+	if t.Failed() {
+		// If the test has failed with .Error(), then we can't hope it
+		// will have produced a useful actual output. Trying to do
+		// something with it here would risk corrupting the expected
+		// output.
+		//
+		// Moreover, we can't expect any subsequent test to be even
+		// able to start. Stop processing the file in that case.
+		*stopNow = true
+		return
+	}
+
+	// The test has not failed, we can analyze the expected
+	// output.
+	if r.rewrite != nil {
+		r.emit("----")
+		if hasBlankLine(actual) {
+			r.emit("----")
+			r.rewrite.WriteString(actual)
+			r.emit("----")
+			r.emit("----")
+		} else {
+			r.emit(actual)
+		}
+	} else if d.Expected != actual {
+		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+	} else if testing.Verbose() {
+		input := d.Input
+		if input == "" {
+			input = "<no input to command>"
+		}
+		// TODO(tbg): it's awkward to reproduce the args, but it would be helpful.
+		fmt.Printf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
+	}
+	return
 }
 
 // Walk goes through all the files in a subdirectory, creating subtests to match
