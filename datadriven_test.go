@@ -73,12 +73,22 @@ xx a=b b=c c=(1,2,3)
 
 func TestSubTestSkip(t *testing.T) {
 	RunTestFromString(t, `
+skip
+----
+
+# This error should never happen.
 error
 ----
 `, func(t *testing.T, d *TestData) string {
-		// Verify that calling t.Skip() does not fail with an API error on
-		// testing.T.
-		t.Skip("woo")
+		switch d.Cmd {
+		case "skip":
+			// Verify that calling t.Skip() does not fail with an API error on
+			// testing.T.
+			t.Skip("woo")
+		case "error":
+			// The skip should mask the error afterwards.
+			t.Error("never reached")
+		}
 		return d.Expected
 	})
 }

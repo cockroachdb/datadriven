@@ -121,14 +121,13 @@ func runTestInternal(
 			d := &r.data
 			actual := func() string {
 				defer func() {
+					if t.Skipped() {
+						// The skip status does not propagate to the parent test
+						// automatically. If we want to catch the skip outside
+						// of the sub-test below, we need to remember it here.
+						subTestSkipped = true
+					}
 					if r := recover(); r != nil {
-						if t.Skipped() {
-							// The skip status does not propagate to the parent test
-							// automatically. If we want to catch the skip outside
-							// of the sub-test below, we need to remember it here.
-							subTestSkipped = true
-						}
-
 						fmt.Printf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 						panic(r)
 					}
@@ -142,9 +141,10 @@ func runTestInternal(
 
 			if t.Failed() {
 				// If the test has failed with .Error(), then we can't hope it
-				// will have produced a useful actual output, so trying to do
-				// something with it here would pile up more errors without
-				// value.
+				// will have produced a useful actual output. Trying to do
+				// something with it here would risk corrupting the expected
+				// output.
+				//
 				// Moreover, we can't expect any subsequent test to be even
 				// able to start. Stop processing the file in that case.
 				continueRunning = false
