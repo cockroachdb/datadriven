@@ -50,16 +50,26 @@ func newTestDataReader(
 func (r *testDataReader) Next(t *testing.T) bool {
 	t.Helper()
 
-	r.data = TestData{}
 	for r.scanner.Scan() {
+		// Ensure to not re-initialize r.data unless a line is read
+		// successfully. The reason is that we want to keep the last
+		// stored value of `Pos` after encountering EOF, to produce useful
+		// error messages.
+		r.data = TestData{}
 		line := r.scanner.Text()
 		r.emit(line)
+
+		// Update Pos early so that a late error message has an updated
+		// position.
+		pos := fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
+		r.data.Pos = pos
 
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "#") {
 			// Skip comment lines.
 			continue
 		}
+
 		// Support wrapping directive lines using \, for example:
 		//   build-scalar \
 		//   vars(int)
@@ -69,7 +79,6 @@ func (r *testDataReader) Next(t *testing.T) bool {
 			line = strings.TrimSuffix(line, `\`) + " " + strings.TrimSpace(nextLine)
 		}
 
-		pos := fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
 		cmd, args, err := ParseLine(line)
 		if err != nil {
 			t.Fatalf("%s: %v", pos, err)
@@ -78,9 +87,14 @@ func (r *testDataReader) Next(t *testing.T) bool {
 			// Nothing to do here.
 			continue
 		}
-		r.data.Pos = pos
+
 		r.data.Cmd = cmd
 		r.data.CmdArgs = args
+
+		if cmd == "subtest" {
+			// Subtest directives do not have an input and expected output.
+			return true
+		}
 
 		var buf bytes.Buffer
 		var separator bool
