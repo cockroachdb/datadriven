@@ -221,7 +221,7 @@ func runTestInternal(
 //     testdata/logprops/select
 //
 //   If path is "testdata/typing", the function is called once and no subtests
-//   care created.
+//   are created.
 //
 //   If path is "testdata/logprops", the function is called two times, in
 //   separate subtests /scan, /select.
@@ -235,10 +235,6 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 		t.Fatal(err)
 	}
 	if !finfo.IsDir() {
-		if tempFileRe.MatchString(finfo.Name()) {
-			// Temp or hidden file, don't even try processing.
-			return
-		}
 		f(t, path)
 		return
 	}
@@ -247,6 +243,10 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 		t.Fatal(err)
 	}
 	for _, file := range files {
+		if tempFileRe.MatchString(file.Name()) {
+			// Temp or hidden file, don't even try processing.
+			return
+		}
 		t.Run(file.Name(), func(t *testing.T) {
 			Walk(t, filepath.Join(path, file.Name()), f)
 		})
