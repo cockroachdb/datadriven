@@ -352,7 +352,7 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 	for _, file := range files {
 		if tempFileRe.MatchString(file.Name()) {
 			// Temp or hidden file, don't even try processing.
-			return
+			continue
 		}
 		t.Run(file.Name(), func(t *testing.T) {
 			Walk(t, filepath.Join(path, file.Name()), f)
