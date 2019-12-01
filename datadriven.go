@@ -317,7 +317,7 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 //
 //    datadriven.Walk(t, path, func (t *testing.T, path string) {
 //      // initialize per-test state
-//      datadriven.RunTest(t, path, func (d *datadriven.TestData) {
+//      datadriven.RunTest(t, path, func (t *testing.T, d *datadriven.TestData) string {
 //       // ...
 //      }
 //    }
