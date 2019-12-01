@@ -15,7 +15,6 @@
 package datadriven
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -496,12 +495,10 @@ func (td TestData) Fatalf(tb testing.TB, format string, args ...interface{}) {
 	tb.Fatalf("%s: %s", td.Pos, fmt.Sprintf(format, args...))
 }
 
+var blankLineRe = regexp.MustCompile(`(?m)^[\t ]*\n`)
+
+// hasBlankLine returns true iff `s` contains at least one line that's
+// empty or contains only whitespace.
 func hasBlankLine(s string) bool {
-	scanner := bufio.NewScanner(strings.NewReader(s))
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == "" {
-			return true
-		}
-	}
-	return false
+	return blankLineRe.MatchString(s)
 }
