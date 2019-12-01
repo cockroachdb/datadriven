@@ -15,7 +15,6 @@
 package datadriven
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -496,12 +495,23 @@ func (td TestData) Fatalf(tb testing.TB, format string, args ...interface{}) {
 	tb.Fatalf("%s: %s", td.Pos, fmt.Sprintf(format, args...))
 }
 
+// hasBlankLine returns true iff `s` contains at least one line that's
+// empty or contains only whitespace.
 func hasBlankLine(s string) bool {
-	scanner := bufio.NewScanner(strings.NewReader(s))
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == "" {
-			return true
-		}
-	}
-	return false
+	return blankLineRe.MatchString(s)
 }
+
+// blankLineRe matches lines that contain only whitespaces (or
+// entirely empty/blank lines).  We use the "m" flag for "multiline"
+// mode so that "^" can match the beginning of individual lines inside
+// the input, not just the beginning of the input.  In multiline mode,
+// "$" also matches the end of lines. However, note how the regexp
+// uses "\n" to match the end of lines instead of "$". This is
+// because of an oddity in the Go regexp engine: at the very end of
+// the input, *after the final \n in the input*, Go estimates there is
+// still one more line containing no characters but that matches the
+// "^.*$" regexp. The result of this oddity is that an input text like
+// "foo\n" will match as "foo\n" (no match) + "" (yes match). We don't
+// want that final match to be included, so we force the end-of-line
+// match using "\n" specifically.
+var blankLineRe = regexp.MustCompile(`(?m)^[\t ]*\n`)
