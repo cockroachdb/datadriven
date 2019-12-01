@@ -86,7 +86,13 @@ var (
 // error by calling t.Error().
 func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string) {
 	t.Helper()
-	file, err := os.OpenFile(path, os.O_RDWR, 0644 /* irrelevant */)
+	mode := os.O_RDONLY
+	if *rewriteTestFiles {
+		// We only open read-write if rewriting, so as to enable running
+		// tests on read-only copies of the source tree.
+		mode = os.O_RDWR
+	}
+	file, err := os.OpenFile(path, mode, 0644 /* irrelevant */)
 	if err != nil {
 		t.Fatal(err)
 	}
