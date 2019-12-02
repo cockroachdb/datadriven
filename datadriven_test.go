@@ -128,6 +128,8 @@ func TestSubTest(t *testing.T) {
 		foundData = true
 		RunTest(t, path, func(t *testing.T, d *TestData) string {
 			switch d.Cmd {
+			case "boom":
+				return "\n"
 			case "hello":
 				return d.CmdArgs[0].Key + " was said"
 			case "skip":
