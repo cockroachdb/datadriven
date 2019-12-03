@@ -166,6 +166,11 @@ func runDirectiveOrSubTest(
 	}
 }
 
+// runSubTest runs a subtest up to and including the final `subtest
+// end`. The opening `subtest` directive has been consumed already.
+// The first parameter `subTestName` is the full path to the subtest,
+// including the parent subtest names as prefix. This is used to
+// validate the nesting and thus prevent mistakes.
 func runSubTest(
 	subTestName string, t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string,
 ) {
@@ -179,8 +184,13 @@ func runSubTest(
 	// inside a subtest. See below for details.
 	seenSkip := false
 
+	// The name passed to t.Run is the last component in the subtest
+	// name, because all components before that are already prefixed by
+	// t.Run from the names of the parent sub-tests.
+	testingSubTestName := subTestName[strings.LastIndex(subTestName, "/")+1:]
+
 	// Begin the sub-test.
-	t.Run(subTestName, func(t *testing.T) {
+	t.Run(testingSubTestName, func(t *testing.T) {
 		defer func() {
 			// Skips are signalled using Goexit() so we must catch it /
 			// remember it here.
