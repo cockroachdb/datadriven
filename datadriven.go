@@ -98,6 +98,12 @@ func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string
 	defer func() {
 		_ = file.Close()
 	}()
+	finfo, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	} else if finfo.IsDir() {
+		t.Fatalf("%s is a directly, not a file; consider using datadriven.Walk", path)
+	}
 
 	runTestInternal(t, path, file, f, *rewriteTestFiles)
 }
