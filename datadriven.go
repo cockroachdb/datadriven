@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cockroachdb/errors"
 )
 
 var (
@@ -102,7 +104,7 @@ func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string
 	if err != nil {
 		t.Fatal(err)
 	} else if finfo.IsDir() {
-		t.Fatalf("%s is a directly, not a file; consider using datadriven.Walk", path)
+		t.Fatalf("%s is a directory, not a file; consider using datadriven.Walk", path)
 	}
 
 	runTestInternal(t, path, file, f, *rewriteTestFiles)
@@ -379,6 +381,32 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 			Walk(t, filepath.Join(path, file.Name()), f)
 		})
 	}
+}
+
+func ClearResults(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0644 /* irrelevant */)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+	finfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	if finfo.IsDir() {
+		return errors.Newf("%s is a directory, not a file")
+	}
+
+	runTestInternal(
+		&testing.T{}, path, file,
+		func(t *testing.T, d *TestData) string { return "" },
+		true, /* rewrite */
+	)
+
+	return nil
 }
 
 // Ignore files named .XXXX, XXX~ or #XXX#.
