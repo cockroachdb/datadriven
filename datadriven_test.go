@@ -16,9 +16,15 @@ package datadriven
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/otiai10/copy"
 )
 
 func TestNewLineBetweenDirectives(t *testing.T) {
@@ -124,7 +130,7 @@ while %d other monkeys watch %s
 
 func TestSubTest(t *testing.T) {
 	foundData := false
-	Walk(t, "testdata", func(t *testing.T, path string) {
+	Walk(t, "testdata/subtest", func(t *testing.T, path string) {
 		foundData = true
 		RunTest(t, path, func(t *testing.T, d *TestData) string {
 			switch d.Cmd {
@@ -147,4 +153,144 @@ func TestSubTest(t *testing.T) {
 	if !foundData {
 		t.Fatalf("no data file found")
 	}
+}
+
+func TestGoTestInterface(t *testing.T) {
+	runTestOverDirectory(t, "TestRewrite", "testdata/no_rewrite_needed",
+		false /*verbose*/, []string{"-rewrite"},
+		`ok  	github.com/cockroachdb/datadriven`, ``)
+
+	runTestOverDirectory(t, "TestRewrite", "testdata/rewrite",
+		false /*verbose*/, []string{"-rewrite"},
+		`ok  	github.com/cockroachdb/datadriven`,
+		`diff -uNr testdata/rewrite/example <datadir>/example
+--- testdata/rewrite/example
++++ <datadir>/example
+@@ -1,6 +1,7 @@
+ hello universe
+ ----
+-incorrect output
++universe was said
+ 
+ hello planet
+ ----
++planet was said
+diff -uNr testdata/rewrite/whitespace <datadir>/whitespace
+--- testdata/rewrite/whitespace
++++ <datadir>/whitespace
+@@ -2,22 +2,23 @@
+ hello world
+ 
+ ----
+-wrong
++world was said
+ 
+ # Command with no output
+ nothing
+ ----
+-wrong
+ 
+ # Command with whitespace output
+ blank
+ ----
+-wrong
++----
+ 
++----
++----
+ blank
+ ----
+ ----
+-wrong
++
+ ----
+ ----
+ `)
+}
+
+func runTestOverDirectory(
+	t *testing.T, testName, dataDir string, verbose bool, extraArgs []string, refTest, refDiff string,
+) {
+	tmpDir, err := ioutil.TempDir("", "go-datadriven")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if t.Failed() {
+			t.Logf("test files remaining in: %s", tmpDir)
+		} else {
+			os.RemoveAll(tmpDir)
+		}
+	}()
+
+	if err := copy.Copy(dataDir, tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run go test.
+	args := []string{"test", "-tags", "gotest"}
+	if verbose {
+		args = append(args, "-v")
+	}
+	args = append(args,
+		"-run", testName+"$",
+		".",
+		"-args", "-datadir", tmpDir)
+	args = append(args, extraArgs...)
+	testCmd := exec.Command("go", args...)
+	testOut, err := testCmd.CombinedOutput()
+	if err != nil {
+		// Special case: if the exit code is specifically 1, we're going
+		// to ignore it -- this simply signals there was a test error. The
+		// expected/actual compare below will catch it.
+		if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+			t.Fatalf("cmd %v:\n%s\nerror: %v", testCmd, testOut, err)
+		}
+	}
+
+	if refTest != "" && !strings.HasSuffix(refTest, "\n") {
+		refTest += "\n"
+	}
+	actual := postProcessGoTestOutput(tmpDir, string(testOut))
+	if string(actual) != refTest {
+		t.Errorf("\nexpected go test output:\n%s\ngot:\n%s", refTest, actual)
+	}
+
+	// Diff the test files, to check if rewriting happened.
+	diffCmd := exec.Command("diff", "-uNr", dataDir, tmpDir)
+	diffOut, err := diffCmd.CombinedOutput()
+	if err != nil {
+		// Special case: if the exit code is specifically 1, we're going
+		// to ignore it -- this simply signals the diff is not empty. The
+		// expected/actual compare below will catch it.
+		if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+			t.Fatalf("cmd %v:\n%s\neerror: %v", diffCmd, diffOut, err)
+		}
+	}
+
+	if refDiff != "" && !strings.HasSuffix(refDiff, "\n") {
+		refDiff += "\n"
+	}
+	actual = postProcessDiffOutput(dataDir, tmpDir, string(diffOut))
+	if string(actual) != refDiff {
+		t.Errorf("\nexpected testadata diff:\n%s\ngot:\n%s", refDiff, actual)
+	}
+}
+
+var resultTs = regexp.MustCompile(`(?m:^((?:FAIL|ok)\s+\S+).*$)`)
+var intermediateTs = regexp.MustCompile(`(?m:^(\s*---.*)\s+\(.*\)$)`)
+
+func postProcessGoTestOutput(tmpDir, testOut string) string {
+	testOut = strings.ReplaceAll(testOut, tmpDir, "<datadir>")
+	testOut = resultTs.ReplaceAllString(testOut, "$1")
+	testOut = intermediateTs.ReplaceAllString(testOut, "$1")
+	return testOut
+}
+
+var diffTs = regexp.MustCompile(`(?m:^((?:\+\+\+|---)\s+\S+).*$)`)
+
+func postProcessDiffOutput(dataDir, tmpDir, testOut string) string {
+	testOut = strings.ReplaceAll(testOut, tmpDir, "<datadir>")
+	testOut = diffTs.ReplaceAllString(testOut, "$1")
+	return testOut
 }

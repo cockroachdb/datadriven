@@ -1,0 +1,17 @@
+# Whitespace in input
+hello world
+
+----
+world was said
+
+# Command with no output
+nothing
+----
+
+# Command with whitespace output
+blank
+----
+----
+
+----
+----

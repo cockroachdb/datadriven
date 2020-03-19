@@ -1,0 +1,30 @@
+# Whitespace in input
+hello world
+
+----
+wrong
+
+# Command with no output
+nothing
+----
+wrong
+
+# Command with whitespace output
+blank
+----
+wrong
+
+blank
+----
+----
+wrong
+----
+----
+
+# This one is correct, we just test the rewrite does not do excess work.
+blank
+----
+----
+
+----
+----
