@@ -107,14 +107,25 @@ func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string
 		t.Fatalf("%s is a directory, not a file; consider using datadriven.Walk", path)
 	}
 
-	runTestInternal(t, path, file, f, *rewriteTestFiles)
+	rewriteData := runTestInternal(t, path, file, f, *rewriteTestFiles)
+	if *rewriteTestFiles {
+		if _, err := file.WriteAt(rewriteData, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Truncate(int64(len(rewriteData))); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Sync(); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
 // directly.
 func RunTestFromString(t *testing.T, input string, f func(t *testing.T, d *TestData) string) {
 	t.Helper()
-	runTestInternal(t, "<string>" /* optionalPath */, strings.NewReader(input), f, *rewriteTestFiles)
+	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, *rewriteTestFiles)
 }
 
 func runTestInternal(
@@ -123,7 +134,7 @@ func runTestInternal(
 	reader io.Reader,
 	f func(t *testing.T, d *TestData) string,
 	rewrite bool,
-) {
+) (rewriteOutput []byte) {
 	t.Helper()
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
@@ -133,23 +144,13 @@ func runTestInternal(
 
 	if r.rewrite != nil {
 		data := r.rewrite.Bytes()
+		// Remove any trailing blank line.
 		if l := len(data); l > 2 && data[l-1] == '\n' && data[l-2] == '\n' {
 			data = data[:l-1]
 		}
-		if dest, ok := reader.(*os.File); ok {
-			if _, err := dest.WriteAt(data, 0); err != nil {
-				t.Fatal(err)
-			}
-			if err := dest.Truncate(int64(len(data))); err != nil {
-				t.Fatal(err)
-			}
-			if err := dest.Sync(); err != nil {
-				t.Fatal(err)
-			}
-		} else {
-			t.Logf("input is not a file; rewritten output is:\n%s", data)
-		}
+		return data
 	}
+	return nil
 }
 
 // runDirectiveOrSubTest runs either a "subtest" directive or an
@@ -397,7 +398,7 @@ func ClearResults(path string) error {
 	}
 
 	if finfo.IsDir() {
-		return errors.Newf("%s is a directory, not a file")
+		return errors.Newf("%s is a directory, not a file", path)
 	}
 
 	runTestInternal(
