@@ -38,6 +38,16 @@ duplicate-with-blank
 some input
 ----
 
+duplicate-with-blank
+some input
+----
+----
+some
+
+expected
+----
+----
+
 no-output
 some input
 ----

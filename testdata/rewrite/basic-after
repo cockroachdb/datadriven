@@ -7,7 +7,6 @@ noop
 noop
 ----
 
-
 noop
 some input
 ----
@@ -29,7 +28,6 @@ some input
 ----
 some input
 some input
-
 
 duplicate-with-blank
 some input
@@ -40,6 +38,17 @@ some input
 some input
 ----
 ----
+
+duplicate-with-blank
+some input
+----
+----
+some input
+
+some input
+----
+----
+
 no-output
 some input
 ----

@@ -318,7 +318,9 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 			r.rewrite.WriteString(actual)
 			r.emit("----")
 			r.emit("----")
+			r.emit("")
 		} else {
+			// Here actual already ends in \n so emit adds a blank line.
 			r.emit(actual)
 		}
 	} else if d.Expected != actual {
