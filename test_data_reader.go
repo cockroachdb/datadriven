@@ -112,14 +112,14 @@ func (r *testDataReader) Next(t *testing.T) bool {
 		r.data.Input = strings.TrimSpace(buf.String())
 
 		if separator {
-			r.readExpected()
+			r.readExpected(t)
 		}
 		return true
 	}
 	return false
 }
 
-func (r *testDataReader) readExpected() {
+func (r *testDataReader) readExpected(t *testing.T) {
 	var buf bytes.Buffer
 	var line string
 	var allowBlankLines bool
@@ -140,6 +140,11 @@ func (r *testDataReader) readExpected() {
 				if r.scanner.Scan() {
 					line2 := r.scanner.Text()
 					if line2 == "----" {
+						// Read the following blank line (if we don't do this, we will emit
+						// an extra blank line when rewriting).
+						if r.scanner.Scan() && r.scanner.Text() != "" {
+							t.Fatal("non-blank line after end of double ---- separator section")
+						}
 						break
 					}
 

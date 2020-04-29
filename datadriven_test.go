@@ -15,7 +15,13 @@
 package datadriven
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -123,28 +129,126 @@ while %d other monkeys watch %s
 }
 
 func TestSubTest(t *testing.T) {
-	foundData := false
-	Walk(t, "testdata", func(t *testing.T, path string) {
-		foundData = true
-		RunTest(t, path, func(t *testing.T, d *TestData) string {
-			switch d.Cmd {
-			case "hello":
-				return d.CmdArgs[0].Key + " was said"
-			case "skip":
-				// Verify that calling t.Skip() does not fail with an API error on
-				// testing.T.
-				t.Skip("woo")
-			case "error":
-				// The skip should mask the error afterwards.
-				t.Error("never reached")
-			default:
-				t.Fatalf("unknown directive: %s", d.Cmd)
-			}
-			return d.Expected
-		})
+	RunTest(t, "testdata/subtest", func(t *testing.T, d *TestData) string {
+		switch d.Cmd {
+		case "hello":
+			return d.CmdArgs[0].Key + " was said"
+		case "skip":
+			// Verify that calling t.Skip() does not fail with an API error on
+			// testing.T.
+			t.Skip("woo")
+		case "error":
+			// The skip should mask the error afterwards.
+			t.Error("never reached")
+		default:
+			t.Fatalf("unknown directive: %s", d.Cmd)
+		}
+		return d.Expected
 	})
+}
 
-	if !foundData {
-		t.Fatalf("no data file found")
+func TestRewrite(t *testing.T) {
+	const testDir = "testdata/rewrite"
+	files, err := ioutil.ReadDir(testDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tests []string
+	for _, file := range files {
+		if name := file.Name(); strings.HasSuffix(name, "-before") {
+			tests = append(tests, strings.TrimSuffix(name, "-before"))
+		} else if !strings.HasSuffix(name, "-after") {
+			t.Fatalf("all files in %s must end in either -before or -after: %s", testDir, name)
+		}
+	}
+	sort.Strings(tests)
+
+	for _, test := range tests {
+		t.Run(test, func(t *testing.T) {
+			path := filepath.Join(testDir, fmt.Sprintf("%s-before", test))
+			file, err := os.OpenFile(path, os.O_RDONLY, 0644 /* irrelevant */)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = file.Close() }()
+
+			// Implement a few simple directives.
+			handler := func(t *testing.T, d *TestData) string {
+				switch d.Cmd {
+				case "noop":
+					return d.Input
+
+				case "duplicate":
+					return fmt.Sprintf("%s\n%s", d.Input, d.Input)
+
+				case "duplicate-with-blank":
+					return fmt.Sprintf("%s\n\n%s", d.Input, d.Input)
+
+				case "no-output":
+					return ""
+
+				default:
+					t.Fatalf("unknown directive %s", d.Cmd)
+					return ""
+				}
+			}
+
+			rewriteData := runTestInternal(t, path, file, handler, true /* rewrite */)
+
+			afterPath := filepath.Join(testDir, fmt.Sprintf("%s-after", test))
+			if *rewriteTestFiles {
+				// We are rewriting the rewrite tests. Dump the output into -after files
+				out, err := os.Create(afterPath)
+				defer func() { _ = out.Close() }()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := out.Write(rewriteData); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				after, err := os.Open(afterPath)
+				defer func() { _ = after.Close() }()
+				if err != nil {
+					t.Fatal(err)
+				}
+				expected, err := ioutil.ReadAll(after)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if string(rewriteData) != string(expected) {
+					// Error; print the first few lines that differ.
+					linesExp := strings.Split(string(expected), "\n")
+					linesActual := strings.Split(string(rewriteData), "\n")
+					lineNum := 1
+					for len(linesExp) > 0 && len(linesActual) > 0 && linesExp[0] == linesActual[0] {
+						lineNum++
+						linesExp = linesExp[1:]
+						linesActual = linesActual[1:]
+					}
+					for len(linesExp) > 0 && len(linesActual) > 0 &&
+						linesExp[len(linesExp)-1] == linesActual[len(linesActual)-1] {
+						linesExp = linesExp[:len(linesExp)-1]
+						linesActual = linesActual[:len(linesActual)-1]
+					}
+					linesToStr := func(lines []string) string {
+						var buf bytes.Buffer
+						const maxLines = 10
+						for i := 0; i < len(lines) && i < maxLines; i++ {
+							fmt.Fprintf(&buf, "%s\n", lines[i])
+						}
+						if len(lines) > maxLines {
+							buf.WriteString("...\n")
+						}
+						return buf.String()
+					}
+					t.Errorf(
+						"%s:%d expected:\n%s  got:\n%s",
+						afterPath, lineNum, linesToStr(linesActual), linesToStr(linesExp),
+					)
+				}
+			}
+		})
 	}
 }
