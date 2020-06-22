@@ -38,7 +38,7 @@ var (
 	)
 
 	traceLog = flag.Bool(
-		"trace", false,
+		"datadriven-trace", false,
 		"echo the directives and responses from test files.",
 	)
 )
