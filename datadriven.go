@@ -36,7 +36,17 @@ var (
 			"run. Used to update tests when a change affects many cases; please verify the testfile "+
 			"diffs carefully!",
 	)
+
+	traceLog = flag.Bool(
+		"trace", false,
+		"echo the directives and responses from test files.",
+	)
 )
+
+// Verbose returns true iff -trace was passed.
+func Verbose() bool {
+	return *traceLog
+}
 
 // RunTest invokes a data-driven test. The test cases are contained in a
 // separate test file and are dynamically loaded, parsed, and executed by this
@@ -287,7 +297,7 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 	actual := func() string {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("\npanic during %s:\n%s\n", d.Pos, d.Input)
+				t.Logf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 				panic(r)
 			}
 		}()
@@ -325,13 +335,13 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 		}
 	} else if d.Expected != actual {
 		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
-	} else if testing.Verbose() {
+	} else if *traceLog {
 		input := d.Input
 		if input == "" {
 			input = "<no input to command>"
 		}
 		// TODO(tbg): it's awkward to reproduce the args, but it would be helpful.
-		fmt.Printf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
+		t.Logf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
 	}
 	return
 }
