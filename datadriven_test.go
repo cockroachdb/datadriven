@@ -44,11 +44,11 @@ unknown command
 bar
 ----
 unknown command
-`, func(t *testing.T, d *TestData) string {
+`, func(t *testing.T, d *TestData) (string, func(string) string) {
 		if d.Input != "sentence" {
-			return "unknown command"
+			return "unknown command", nil
 		}
-		return ""
+		return "", nil
 	})
 }
 
@@ -68,12 +68,12 @@ parse
 xx a=b b=c c=(1,2,3)
 ----
 "xx" [a=b b=c c=(1, 2, 3)]
-`, func(t *testing.T, d *TestData) string {
+`, func(t *testing.T, d *TestData) (string, func(string) string) {
 		cmd, args, err := ParseLine(d.Input)
 		if err != nil {
-			return errors.Wrap(err, "here").Error()
+			return errors.Wrap(err, "here").Error(), nil
 		}
-		return fmt.Sprintf("%q %+v", cmd, args)
+		return fmt.Sprintf("%q %+v", cmd, args), nil
 	})
 }
 
@@ -85,7 +85,7 @@ skip
 # This error should never happen.
 error
 ----
-`, func(t *testing.T, d *TestData) string {
+`, func(t *testing.T, d *TestData) (string, func(string) string) {
 		switch d.Cmd {
 		case "skip":
 			// Verify that calling t.Skip() does not fail with an API error on
@@ -95,7 +95,7 @@ error
 			// The skip should mask the error afterwards.
 			t.Error("never reached")
 		}
-		return d.Expected
+		return d.Expected, nil
 	})
 }
 
@@ -110,7 +110,7 @@ Did the following: make sentence
 1 hungry monkey eats a 🍌
 while 12 other monkeys watch greedily,impatient
 true I'd say
-`, func(t *testing.T, d *TestData) string {
+`, func(t *testing.T, d *TestData) (string, func(string) string) {
 		var one int
 		var twelve int
 		var banana string
@@ -124,15 +124,15 @@ true I'd say
 while %d other monkeys watch %s
 %v I'd say`,
 			d.Cmd, d.Input, one, banana, twelve, greedily, abc,
-		)
+		), nil
 	})
 }
 
 func TestSubTest(t *testing.T) {
-	RunTest(t, "testdata/subtest", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/subtest", func(t *testing.T, d *TestData) (string, func(string) string) {
 		switch d.Cmd {
 		case "hello":
-			return d.CmdArgs[0].Key + " was said"
+			return d.CmdArgs[0].Key + " was said", nil
 		case "skip":
 			// Verify that calling t.Skip() does not fail with an API error on
 			// testing.T.
@@ -143,7 +143,7 @@ func TestSubTest(t *testing.T) {
 		default:
 			t.Fatalf("unknown directive: %s", d.Cmd)
 		}
-		return d.Expected
+		return d.Expected, nil
 	})
 }
 
@@ -173,23 +173,23 @@ func TestRewrite(t *testing.T) {
 			defer func() { _ = file.Close() }()
 
 			// Implement a few simple directives.
-			handler := func(t *testing.T, d *TestData) string {
+			handler := func(t *testing.T, d *TestData) (string, func(string) string) {
 				switch d.Cmd {
 				case "noop":
-					return d.Input
+					return d.Input, nil
 
 				case "duplicate":
-					return fmt.Sprintf("%s\n%s", d.Input, d.Input)
+					return fmt.Sprintf("%s\n%s", d.Input, d.Input), nil
 
 				case "duplicate-with-blank":
-					return fmt.Sprintf("%s\n\n%s", d.Input, d.Input)
+					return fmt.Sprintf("%s\n\n%s", d.Input, d.Input), nil
 
 				case "no-output":
-					return ""
+					return "", nil
 
 				default:
 					t.Fatalf("unknown directive %s", d.Cmd)
-					return ""
+					return "", nil
 				}
 			}
 

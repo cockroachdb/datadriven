@@ -95,7 +95,12 @@ func Verbose() bool {
 //
 // It is also possible for a test to report an _unexpected_ test
 // error by calling t.Error().
-func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string) {
+//
+// RunTest's f function parameter returns a string and a callback that
+// wraps the error message if an error is raised.
+func RunTest(t *testing.T, path string,
+	f func(t *testing.T, d *TestData) (string, func(string) string),
+) {
 	t.Helper()
 	mode := os.O_RDONLY
 	if *rewriteTestFiles {
@@ -133,7 +138,9 @@ func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
 // directly.
-func RunTestFromString(t *testing.T, input string, f func(t *testing.T, d *TestData) string) {
+func RunTestFromString(t *testing.T, input string,
+	f func(t *testing.T, d *TestData) (string, func(string) string),
+) {
 	t.Helper()
 	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, *rewriteTestFiles)
 }
@@ -142,7 +149,7 @@ func runTestInternal(
 	t *testing.T,
 	sourceName string,
 	reader io.Reader,
-	f func(t *testing.T, d *TestData) string,
+	f func(t *testing.T, d *TestData) (string, func(string) string),
 	rewrite bool,
 ) (rewriteOutput []byte) {
 	t.Helper()
@@ -170,7 +177,7 @@ func runDirectiveOrSubTest(
 	t *testing.T,
 	r *testDataReader,
 	mandatorySubTestPrefix string,
-	f func(*testing.T, *TestData) string,
+	f func(*testing.T, *TestData) (string, func(string) string),
 ) {
 	if subTestName, ok := isSubTestStart(t, r, mandatorySubTestPrefix); ok {
 		runSubTest(subTestName, t, r, f)
@@ -191,7 +198,8 @@ func runDirectiveOrSubTest(
 // including the parent subtest names as prefix. This is used to
 // validate the nesting and thus prevent mistakes.
 func runSubTest(
-	subTestName string, t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string,
+	subTestName string, t *testing.T, r *testDataReader,
+	f func(*testing.T, *TestData) (string, func(string) string),
 ) {
 	// Remember the current reader position in case we need to spell out
 	// an error message below.
@@ -290,22 +298,24 @@ func isSubTestEnd(t *testing.T, r *testDataReader) bool {
 // instead of returned because the testing module implements t.Skip
 // and t.Fatal using panics, and we're not guaranteed to get back to
 // the caller via a return in those cases.
-func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string) {
+func runDirective(t *testing.T, r *testDataReader,
+	f func(*testing.T, *TestData) (string, func(string) string),
+) {
 	t.Helper()
 
 	d := &r.data
-	actual := func() string {
+	actual, wrapErrorFn := func() (string, func(string) string) {
 		defer func() {
 			if r := recover(); r != nil {
 				t.Logf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 				panic(r)
 			}
 		}()
-		actual := f(t, d)
+		actual, wrapErrorFn := f(t, d)
 		if actual != "" && !strings.HasSuffix(actual, "\n") {
 			actual += "\n"
 		}
-		return actual
+		return actual, wrapErrorFn
 	}()
 
 	if t.Failed() {
@@ -334,7 +344,14 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 			r.emit(actual)
 		}
 	} else if d.Expected != actual {
-		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+		err := fmt.Sprintf(
+			"\n%s: %s\nexpected:\n%s\nfound:\n%s",
+			d.Pos, d.Input, d.Expected, actual,
+		)
+		if wrapErrorFn != nil {
+			err = wrapErrorFn(err)
+		}
+		t.Fatalf(err)
 	} else if *traceLog {
 		input := d.Input
 		if input == "" {
@@ -415,7 +432,9 @@ func ClearResults(path string) error {
 
 	runTestInternal(
 		&testing.T{}, path, file,
-		func(t *testing.T, d *TestData) string { return "" },
+		func(t *testing.T, d *TestData) (string, func(string) string) {
+			return "", nil
+		},
 		true, /* rewrite */
 	)
 
