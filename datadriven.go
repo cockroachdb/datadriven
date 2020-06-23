@@ -485,14 +485,16 @@ func (td *TestData) ScanArgs(t *testing.T, key string, dests ...interface{}) {
 		}
 	}
 	if arg.Key == "" {
-		t.Fatalf("missing argument: %s", key)
+		td.Fatalf(t, "missing argument: %s", key)
 	}
 	if len(dests) != len(arg.Vals) {
-		t.Fatalf("%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
+		td.Fatalf(t, "%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
 	}
 
 	for i := range dests {
-		arg.Scan(t, i, dests[i])
+		if err := arg.scanErr(i, dests[i]); err != nil {
+			td.Fatalf(t, "%s: failed to scan argument %d: %v", arg.Key, i, err)
+		}
 	}
 }
 
@@ -521,8 +523,15 @@ func (arg CmdArg) String() string {
 
 // Scan attempts to parse the value at index i into the dest.
 func (arg CmdArg) Scan(t *testing.T, i int, dest interface{}) {
+	if err := arg.scanErr(i, dest); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// scanErr is like Scan but returns an error rather than taking a testing.T to fatal.
+func (arg CmdArg) scanErr(i int, dest interface{}) error {
 	if i < 0 || i >= len(arg.Vals) {
-		t.Fatalf("cannot scan index %d of key %s", i, arg.Key)
+		return errors.Errorf("cannot scan index %d of key %s", i, arg.Key)
 	}
 	val := arg.Vals[i]
 	switch dest := dest.(type) {
@@ -531,24 +540,25 @@ func (arg CmdArg) Scan(t *testing.T, i int, dest interface{}) {
 	case *int:
 		n, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		*dest = int(n) // assume 64bit ints
 	case *uint64:
 		n, err := strconv.ParseUint(val, 10, 64)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		*dest = n
 	case *bool:
 		b, err := strconv.ParseBool(val)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		*dest = b
 	default:
-		t.Fatalf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
+		return errors.Errorf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
 	}
+	return nil
 }
 
 // Fatalf wraps a fatal testing error with test file position information, so
