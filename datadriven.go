@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 var (
@@ -334,6 +335,21 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 			r.emit(actual)
 		}
 	} else if d.Expected != actual {
+		expectedLines := difflib.SplitLines(d.Expected)
+		actualLines := difflib.SplitLines(actual)
+		if len(expectedLines) > 5 {
+			// Print a unified diff if there is a lot of output to compare.
+			diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+				Context: 5,
+				A: expectedLines,
+				B: actualLines,
+			})
+			if err == nil {
+				t.Fatalf("output didn't match expected:\n%s", diff)
+				return
+			}
+			t.Logf("Failed to produce diff %v", err)
+		}
 		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
 	} else if *traceLog {
 		input := d.Input

@@ -15,7 +15,6 @@
 package datadriven
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -25,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 func TestNewLineBetweenDirectives(t *testing.T) {
@@ -147,6 +147,26 @@ func TestSubTest(t *testing.T) {
 	})
 }
 
+func TestMultiLineTest(t *testing.T) {
+	RunTest(t, "testdata/multiline", func(t *testing.T, d *TestData) string {
+		switch d.Cmd {
+		case "small":
+			return `just
+two lines of output`
+		case "large":
+			return `more
+than
+five
+lines
+of
+output`
+		default:
+			t.Fatalf("unknown directive: %s", d.Cmd)
+		}
+		return d.Expected
+	})
+}
+
 func TestRewrite(t *testing.T) {
 	const testDir = "testdata/rewrite"
 	files, err := ioutil.ReadDir(testDir)
@@ -218,35 +238,16 @@ func TestRewrite(t *testing.T) {
 				}
 
 				if string(rewriteData) != string(expected) {
-					// Error; print the first few lines that differ.
-					linesExp := strings.Split(string(expected), "\n")
-					linesActual := strings.Split(string(rewriteData), "\n")
-					lineNum := 1
-					for len(linesExp) > 0 && len(linesActual) > 0 && linesExp[0] == linesActual[0] {
-						lineNum++
-						linesExp = linesExp[1:]
-						linesActual = linesActual[1:]
+					linesExp := difflib.SplitLines(string(expected))
+					linesActual := difflib.SplitLines(string(rewriteData))
+					diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+						A: linesExp,
+						B: linesActual,
+					})
+					if err != nil {
+						t.Fatal(err)
 					}
-					for len(linesExp) > 0 && len(linesActual) > 0 &&
-						linesExp[len(linesExp)-1] == linesActual[len(linesActual)-1] {
-						linesExp = linesExp[:len(linesExp)-1]
-						linesActual = linesActual[:len(linesActual)-1]
-					}
-					linesToStr := func(lines []string) string {
-						var buf bytes.Buffer
-						const maxLines = 10
-						for i := 0; i < len(lines) && i < maxLines; i++ {
-							fmt.Fprintf(&buf, "%s\n", lines[i])
-						}
-						if len(lines) > maxLines {
-							buf.WriteString("...\n")
-						}
-						return buf.String()
-					}
-					t.Errorf(
-						"%s:%d expected:\n%s  got:\n%s",
-						afterPath, lineNum, linesToStr(linesActual), linesToStr(linesExp),
-					)
+					t.Errorf("expected didn't match actual:\n%s", diff)
 				}
 			}
 		})
