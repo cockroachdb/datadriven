@@ -38,15 +38,30 @@ var (
 			"diffs carefully!",
 	)
 
-	traceLog = flag.Bool(
-		"datadriven-trace", false,
-		"echo the directives and responses from test files.",
+	quietLog = flag.Bool(
+		"datadriven-quiet", true,
+		"avoid echoing the directives and responses from test files.",
 	)
 )
 
-// Verbose returns true iff -trace was passed.
+// Verbose returns true iff -datadriven-quiet was not passed.
 func Verbose() bool {
-	return *traceLog
+	return !*quietLog
+}
+
+// In CockroachDB we want to quiesce all the logs across all packages.
+// If we had only a flag to work with, we'd get command line parsing
+// errors on all packages that do not use datadriven. So
+// we make do by also making a command line parameter available.
+func init() {
+	const quietEnvVar = "DATADRIVEN_QUIET_LOG"
+	if str, ok := os.LookupEnv(quietEnvVar); ok {
+		v, err := strconv.ParseBool(str)
+		if err != nil {
+			panic(fmt.Sprintf("error parsing %s: %s", quietEnvVar, err))
+		}
+		*quietLog = v
+	}
 }
 
 // RunTest invokes a data-driven test. The test cases are contained in a
@@ -341,8 +356,8 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 			// Print a unified diff if there is a lot of output to compare.
 			diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
 				Context: 5,
-				A: expectedLines,
-				B: actualLines,
+				A:       expectedLines,
+				B:       actualLines,
 			})
 			if err == nil {
 				t.Fatalf("output didn't match expected:\n%s", diff)
@@ -351,7 +366,7 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 			t.Logf("Failed to produce diff %v", err)
 		}
 		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
-	} else if *traceLog {
+	} else if !*quietLog {
 		input := d.Input
 		if input == "" {
 			input = "<no input to command>"
