@@ -39,7 +39,7 @@ var (
 	)
 
 	quietLog = flag.Bool(
-		"datadriven-quiet", true,
+		"datadriven-quiet", false,
 		"avoid echoing the directives and responses from test files.",
 	)
 )
