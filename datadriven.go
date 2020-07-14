@@ -46,7 +46,7 @@ var (
 
 // Verbose returns true iff -datadriven-quiet was not passed.
 func Verbose() bool {
-	return !*quietLog
+	return testing.Verbose() && !*quietLog
 }
 
 // In CockroachDB we want to quiesce all the logs across all packages.
@@ -366,7 +366,7 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 			t.Logf("Failed to produce diff %v", err)
 		}
 		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
-	} else if !*quietLog {
+	} else if Verbose() {
 		input := d.Input
 		if input == "" {
 			input = "<no input to command>"
