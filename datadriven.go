@@ -188,6 +188,7 @@ func runDirectiveOrSubTest(
 	mandatorySubTestPrefix string,
 	f func(*testing.T, *TestData) string,
 ) {
+	t.Helper()
 	if subTestName, ok := isSubTestStart(t, r, mandatorySubTestPrefix); ok {
 		runSubTest(subTestName, t, r, f)
 	} else {
