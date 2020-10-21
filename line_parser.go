@@ -15,66 +15,138 @@
 package datadriven
 
 import (
-	"regexp"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 )
 
-// ParseLine parses a line of datadriven input language and returns
-// the parsed command and CmdArgs.
+// ParseLine parses a datadriven directive line and returns the parsed command
+// and CmdArgs.
+//
+// An input directive line is a command optionally followed by a list of
+// arguments. Arguments may or may not have values and are specified with one of
+// the forms:
+//  - <argname>                            # No values.
+//  - <argname>=<value>                    # Single value.
+//  - <argname>=(<value1>, <value2>, ...)  # Multiple values.
+//
+// Note that in the last case, we allow the values to contain parens; the
+// parsing will take nesting into account. For example:
+//   cmd exprs=(a + (b + c), d + f)
+// is valid and produces the expected values for the argument.
+//
 func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
-	fields, err := splitDirectives(line)
-	if err != nil {
-		return "", nil, err
-	}
-	if len(fields) == 0 {
+	line = strings.TrimSpace(line)
+	if line == "" {
 		return "", nil, nil
 	}
-	cmd = fields[0]
+	origLine := line
 
-	for _, arg := range fields[1:] {
-		key := arg
-		var vals []string
-		if pos := strings.IndexByte(key, '='); pos >= 0 {
-			key = arg[:pos]
-			val := arg[pos+1:]
-
-			if len(val) > 2 && val[0] == '(' && val[len(val)-1] == ')' {
-				vals = strings.Split(val[1:len(val)-1], ",")
-				for i := range vals {
-					vals[i] = strings.TrimSpace(vals[i])
-				}
+	defer func() {
+		if r := recover(); r != nil {
+			if r == (parseError{}) {
+				column := len(origLine) - len(line) + 1
+				cmd = ""
+				cmdArgs = nil
+				err = errors.Errorf("cannot parse directive at column %d: %s", column, origLine)
+				// Note: to debug an unexpected parsing error, this is a good place to
+				// add a debug.PrintStack().
 			} else {
-				vals = []string{val}
+				panic(r)
 			}
 		}
-		cmdArgs = append(cmdArgs, CmdArg{Key: key, Vals: vals})
+	}()
+
+	// until removes the prefix up to one of the given characters from line and
+	// returns the prefix.
+	until := func(chars string) string {
+		idx := strings.IndexAny(line, chars)
+		if idx == -1 {
+			idx = len(line)
+		}
+		res := line[:idx]
+		line = line[idx:]
+		return res
+	}
+
+	cmd = until(" ")
+	if cmd == "" {
+		panic(parseError{})
+	}
+	line = strings.TrimSpace(line)
+
+	for line != "" {
+		var arg CmdArg
+		arg.Key = until(" =")
+		if arg.Key == "" {
+			panic(parseError{})
+		}
+		if line != "" && line[0] == '=' {
+			// Skip the '='.
+			line = line[1:]
+
+			if line == "" || line[0] == ' ' {
+				// Empty value.
+				arg.Vals = []string{""}
+			} else if line[0] != '(' {
+				// Single value.
+				val := until(" ")
+				arg.Vals = []string{val}
+			} else {
+				// Skip the '('.
+				line = line[1:]
+
+				// To allow for nested parens, we implement a recursive descent parser
+				// which operates on a slice of runes and keeps track of the current
+				// position.
+				var runes []rune
+				var pos int
+
+				// untilMatchedParen advances pos until a ')' is reached that does not
+				// match an earlier '('. After the call, pos will point right after ')'.
+				//
+				// For example, if runes[pos:] is "x+(a+(b+c)))y" before the call, it
+				// will be "y" after the call.
+				var untilMatchedParen func()
+				untilMatchedParen = func() {
+					for pos < len(runes) {
+						pos++
+						if runes[pos-1] == ')' {
+							// Done.
+							return
+						}
+						if runes[pos-1] == '(' {
+							untilMatchedParen()
+						}
+					}
+					// Did not find the matching paren.
+					panic(parseError{})
+				}
+
+				for done := false; !done; {
+					pos = 0
+					runes = []rune(line)
+					for pos < len(runes) && runes[pos] != ')' && runes[pos] != ',' {
+						pos++
+						if runes[pos-1] == '(' {
+							untilMatchedParen()
+						}
+					}
+					if pos == len(runes) {
+						// Did not find the matching paren.
+						panic(parseError{})
+					}
+					done = runes[pos] == ')'
+					val := string(runes[:pos])
+					arg.Vals = append(arg.Vals, val)
+					line = strings.TrimSpace(string(runes[pos+1:]))
+				}
+			}
+		}
+		cmdArgs = append(cmdArgs, arg)
+		line = strings.TrimSpace(line)
 	}
 	return cmd, cmdArgs, nil
 }
 
-var splitDirectivesRE = regexp.MustCompile(`^ *[-a-zA-Z0-9/_,\.]+(|=[-a-zA-Z0-9_@=+/,\.]*|=\([^)]*\))( |$)`)
-
-// splits a directive line into tokens, where each token is
-// either:
-//  - a,list,of,things        # this is just one argument
-//  - argument
-//  - argument=a,b,c,d        # this is just one value string
-//  - argument=               # = empty value string
-//  - argument=(values, ...)  # a comma-separated array of value strings
-func splitDirectives(line string) ([]string, error) {
-	var res []string
-
-	origLine := line
-	for line != "" {
-		str := splitDirectivesRE.FindString(line)
-		if len(str) == 0 {
-			column := len(origLine) - len(line) + 1
-			return nil, errors.Newf("cannot parse directive at column %d: %s", column, origLine)
-		}
-		res = append(res, strings.TrimSpace(line[0:len(str)]))
-		line = line[len(str):]
-	}
-	return res, nil
-}
+type parseError struct{}
