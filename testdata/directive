@@ -1,0 +1,55 @@
+some-command
+----
+cmd: some-command
+0 arguments
+
+some-command arg1 arg2=val1 arg3=(val1, val2)
+----
+cmd: some-command
+3 arguments
+key="arg1" vals=[]string(nil)
+key="arg2" vals=[]string{"val1"}
+key="arg3" vals=[]string{"val1", "val2"}
+
+# Tolerate extra spaces.
+some-command  arg1   arg2=val1    arg3=(val1,    val2)
+----
+cmd: some-command
+3 arguments
+key="arg1" vals=[]string(nil)
+key="arg2" vals=[]string{"val1"}
+key="arg3" vals=[]string{"val1", "val2"}
+
+# Tolerate unnecessary parens.
+some-command arg1=() arg2=(val)
+----
+cmd: some-command
+2 arguments
+key="arg1" vals=[]string{""}
+key="arg2" vals=[]string{"val"}
+
+# Allow paren nesting inside values.
+some-command arg1=(1, (2,3), (4 * (1 + 2))) arg2=(some (nested (parens, etc)), more (nested (parens)))
+----
+cmd: some-command
+2 arguments
+key="arg1" vals=[]string{"1", "(2,3)", "(4 * (1 + 2))"}
+key="arg2" vals=[]string{"some (nested (parens, etc))", "more (nested (parens))"}
+
+make argTuple=(1, 🍌) argInt=12 argString=greedily,impatient moreIgnore= a,b,c
+----
+cmd: make
+5 arguments
+key="argTuple" vals=[]string{"1", "🍌"}
+key="argInt" vals=[]string{"12"}
+key="argString" vals=[]string{"greedily,impatient"}
+key="moreIgnore" vals=[]string{""}
+key="a,b,c" vals=[]string(nil)
+
+index-constraints vars=(a int not null, b int, c int as (a+b) stored) index=(a,)
+a+b = 1
+----
+cmd: index-constraints
+2 arguments
+key="vars" vals=[]string{"a int not null", "b int", "c int as (a+b) stored"}
+key="index" vals=[]string{"a", ""}
