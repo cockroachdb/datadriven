@@ -15,6 +15,7 @@
 package datadriven
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -55,9 +56,9 @@ unknown command
 func TestParseLine(t *testing.T) {
 	RunTestFromString(t, `
 parse
-xx +++
+xx =
 ----
-here: cannot parse directive at column 4: xx +++
+here: cannot parse directive at column 4: xx =
 
 parse
 xx a=b a=c
@@ -99,35 +100,6 @@ error
 	})
 }
 
-func TestArgFormat(t *testing.T) {
-	RunTestFromString(t, `
-# NB: we allow duplicate args.
-# ScanArgs simply picks the first occurrence.
-make argTuple=(1, 🍌) argInt=12 argString=greedily,impatient moreIgnore= a,b,c
-sentence
-----
-Did the following: make sentence
-1 hungry monkey eats a 🍌
-while 12 other monkeys watch greedily,impatient
-true I'd say
-`, func(t *testing.T, d *TestData) string {
-		var one int
-		var twelve int
-		var banana string
-		var greedily string
-		d.ScanArgs(t, "argTuple", &one, &banana)
-		d.ScanArgs(t, "argInt", &twelve)
-		d.ScanArgs(t, "argString", &greedily)
-		abc := d.HasArg("a,b,c")
-		return fmt.Sprintf(`Did the following: %s %s
-%d hungry monkey eats a %s
-while %d other monkeys watch %s
-%v I'd say`,
-			d.Cmd, d.Input, one, banana, twelve, greedily, abc,
-		)
-	})
-}
-
 func TestSubTest(t *testing.T) {
 	RunTest(t, "testdata/subtest", func(t *testing.T, d *TestData) string {
 		switch d.Cmd {
@@ -164,6 +136,17 @@ output`
 			t.Fatalf("unknown directive: %s", d.Cmd)
 		}
 		return d.Expected
+	})
+}
+
+func TestDirective(t *testing.T) {
+	RunTest(t, "testdata/directive", func(t *testing.T, d *TestData) string {
+		var buf bytes.Buffer
+		fmt.Fprintf(&buf, "cmd: %s\n%d arguments\n", d.Cmd, len(d.CmdArgs))
+		for _, a := range d.CmdArgs {
+			fmt.Fprintf(&buf, "key=%#v vals=%#v\n", a.Key, a.Vals)
+		}
+		return buf.String()
 	})
 }
 
