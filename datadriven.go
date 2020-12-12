@@ -361,7 +361,7 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 				B:       actualLines,
 			})
 			if err == nil {
-				t.Fatalf("output didn't match expected:\n%s", diff)
+				t.Fatalf("\n%s: %s\noutput didn't match expected:\n%s", d.Pos, d.Input, diff)
 				return
 			}
 			t.Logf("Failed to produce diff %v", err)
