@@ -114,6 +114,8 @@ func (r *testDataReader) Next(t *testing.T) bool {
 		if separator {
 			r.readExpected(t)
 		}
+
+		r.data.Rewrite = *rewriteTestFiles
 		return true
 	}
 	return false
