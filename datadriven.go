@@ -361,12 +361,12 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 				B:       actualLines,
 			})
 			if err == nil {
-				t.Fatalf("\n%s: %s\noutput didn't match expected:\n%s", d.Pos, d.Input, diff)
+				t.Fatalf("\n%s:\n %s\noutput didn't match expected:\n%s", d.Pos, d.Input, diff)
 				return
 			}
 			t.Logf("Failed to produce diff %v", err)
 		}
-		t.Fatalf("\n%s: %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+		t.Fatalf("\n%s:\n %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
 	} else if Verbose() {
 		input := d.Input
 		if input == "" {
