@@ -422,10 +422,15 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 			// Temp or hidden file, don't even try processing.
 			continue
 		}
-		t.Run(file.Name(), func(t *testing.T) {
+		t.Run(cutExt(file.Name()), func(t *testing.T) {
 			Walk(t, filepath.Join(path, file.Name()), f)
 		})
 	}
+}
+
+func cutExt(fileName string) string {
+	extStart := len(fileName) - len(filepath.Ext(fileName))
+	return fileName[:extStart]
 }
 
 func ClearResults(path string) error {

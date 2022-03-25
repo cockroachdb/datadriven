@@ -1,0 +1,11 @@
+some-command
+----
+test name: TestExtension/extension
+
+subtest foo
+
+some-command
+----
+test name: TestExtension/extension/foo
+
+subtest end

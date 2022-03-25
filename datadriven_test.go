@@ -150,6 +150,14 @@ func TestDirective(t *testing.T) {
 	})
 }
 
+func TestExtension(t *testing.T) {
+	Walk(t, "testdata/extension", func (t *testing.T, path string) {
+		RunTest(t, path, func (t *testing.T, d *TestData) string {
+			return fmt.Sprintf("test name: %s\n", t.Name())
+		})
+	})
+}
+
 func TestRewrite(t *testing.T) {
 	const testDir = "testdata/rewrite"
 	files, err := ioutil.ReadDir(testDir)
