@@ -579,6 +579,12 @@ func (arg CmdArg) scanErr(i int, dest interface{}) error {
 			return err
 		}
 		*dest = int(n) // assume 64bit ints
+	case *int64:
+		n, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return err
+		}
+		*dest = n
 	case *uint64:
 		n, err := strconv.ParseUint(val, 10, 64)
 		if err != nil {
