@@ -26,7 +26,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/errors"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -442,7 +441,7 @@ func ClearResults(path string) error {
 	}
 
 	if finfo.IsDir() {
-		return errors.Newf("%s is a directory, not a file", path)
+		return fmt.Errorf("%s is a directory, not a file", path)
 	}
 
 	runTestInternal(
@@ -567,7 +566,7 @@ func (arg CmdArg) Scan(t *testing.T, i int, dest interface{}) {
 // scanErr is like Scan but returns an error rather than taking a testing.T to fatal.
 func (arg CmdArg) scanErr(i int, dest interface{}) error {
 	if i < 0 || i >= len(arg.Vals) {
-		return errors.Errorf("cannot scan index %d of key %s", i, arg.Key)
+		return fmt.Errorf("cannot scan index %d of key %s", i, arg.Key)
 	}
 	val := arg.Vals[i]
 	switch dest := dest.(type) {
@@ -598,7 +597,7 @@ func (arg CmdArg) scanErr(i int, dest interface{}) error {
 		}
 		*dest = b
 	default:
-		return errors.Errorf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
+		return fmt.Errorf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
 	}
 	return nil
 }

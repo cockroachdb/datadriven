@@ -15,10 +15,9 @@
 package datadriven
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/cockroachdb/errors"
 )
 
 // ParseLine parses a datadriven directive line and returns the parsed command
@@ -49,7 +48,7 @@ func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
 				column := len(origLine) - len(line) + 1
 				cmd = ""
 				cmdArgs = nil
-				err = errors.Errorf("cannot parse directive at column %d: %s", column, origLine)
+				err = fmt.Errorf("cannot parse directive at column %d: %s", column, origLine)
 				// Note: to debug an unexpected parsing error, this is a good place to
 				// add a debug.PrintStack().
 			} else {
