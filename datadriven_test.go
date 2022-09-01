@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/errors"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -72,7 +71,7 @@ xx a=b b=c c=(1,2,3)
 `, func(t *testing.T, d *TestData) string {
 		cmd, args, err := ParseLine(d.Input)
 		if err != nil {
-			return errors.Wrap(err, "here").Error()
+			return fmt.Errorf("here: %w", err).Error()
 		}
 		return fmt.Sprintf("%q %+v", cmd, args)
 	})
