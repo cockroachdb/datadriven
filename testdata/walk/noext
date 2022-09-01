@@ -1,0 +1,11 @@
+some-command
+----
+test name: TestWalk/noext
+
+subtest foo
+
+some-command
+----
+test name: TestWalk/noext/foo
+
+subtest end
