@@ -112,6 +112,14 @@ func init() {
 // error by calling t.Error().
 func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string) {
 	t.Helper()
+
+	RunTestAny(t, path, func(t testing.TB, d *TestData) string {
+		return f(t.(*testing.T), d)
+	})
+}
+
+// RunTestAny is like RunTest but works over a testing.TB.
+func RunTestAny(t testing.TB, path string, f func(t testing.TB, d *TestData) string) {
 	mode := os.O_RDONLY
 	if *rewriteTestFiles {
 		// We only open read-write if rewriting, so as to enable running
@@ -150,14 +158,22 @@ func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string
 // directly.
 func RunTestFromString(t *testing.T, input string, f func(t *testing.T, d *TestData) string) {
 	t.Helper()
+	RunTestFromStringAny(t, input, func(t testing.TB, d *TestData) string {
+		return f(t.(*testing.T), d)
+	})
+}
+
+// RunTestFromStringAny is like RunTestFromString but works with a testing.TB.
+func RunTestFromStringAny(t testing.TB, input string, f func(t testing.TB, d *TestData) string) {
+	t.Helper()
 	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, *rewriteTestFiles)
 }
 
 func runTestInternal(
-	t *testing.T,
+	t testing.TB,
 	sourceName string,
 	reader io.Reader,
-	f func(t *testing.T, d *TestData) string,
+	f func(t testing.TB, d *TestData) string,
 	rewrite bool,
 ) (rewriteOutput []byte) {
 	t.Helper()
@@ -182,10 +198,10 @@ func runTestInternal(
 // actual test directive. The "mandatorySubTestPrefix" argument indicates
 // a mandatory prefix required from all sub-test names at this point.
 func runDirectiveOrSubTest(
-	t *testing.T,
+	t testing.TB,
 	r *testDataReader,
 	mandatorySubTestPrefix string,
-	f func(*testing.T, *TestData) string,
+	f func(testing.TB, *TestData) string,
 ) {
 	t.Helper()
 	if subTestName, ok := isSubTestStart(t, r, mandatorySubTestPrefix); ok {
@@ -207,7 +223,7 @@ func runDirectiveOrSubTest(
 // including the parent subtest names as prefix. This is used to
 // validate the nesting and thus prevent mistakes.
 func runSubTest(
-	subTestName string, t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string,
+	subTestName string, t testing.TB, r *testDataReader, f func(testing.TB, *TestData) string,
 ) {
 	// Remember the current reader position in case we need to spell out
 	// an error message below.
@@ -225,7 +241,7 @@ func runSubTest(
 	testingSubTestName := subTestName[strings.LastIndex(subTestName, "/")+1:]
 
 	// Begin the sub-test.
-	t.Run(testingSubTestName, func(t *testing.T) {
+	subTest(t, testingSubTestName, func(t testing.TB) {
 		defer func() {
 			// Skips are signalled using Goexit() so we must catch it /
 			// remember it here.
@@ -270,7 +286,7 @@ func runSubTest(
 
 }
 
-func isSubTestStart(t *testing.T, r *testDataReader, mandatorySubTestPrefix string) (string, bool) {
+func isSubTestStart(t testing.TB, r *testDataReader, mandatorySubTestPrefix string) (string, bool) {
 	if r.data.Cmd != "subtest" {
 		return "", false
 	}
@@ -287,7 +303,7 @@ func isSubTestStart(t *testing.T, r *testDataReader, mandatorySubTestPrefix stri
 	return subTestName, true
 }
 
-func isSubTestEnd(t *testing.T, r *testDataReader) bool {
+func isSubTestEnd(t testing.TB, r *testDataReader) bool {
 	if r.data.Cmd != "subtest" {
 		return false
 	}
@@ -306,7 +322,7 @@ func isSubTestEnd(t *testing.T, r *testDataReader) bool {
 // instead of returned because the testing module implements t.Skip
 // and t.Fatal using panics, and we're not guaranteed to get back to
 // the caller via a return in those cases.
-func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData) string) {
+func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData) string) {
 	t.Helper()
 
 	d := &r.data
@@ -404,6 +420,14 @@ func runDirective(t *testing.T, r *testDataReader, f func(*testing.T, *TestData)
 //   hierarchy /typing, /logprops/scan, /logprops/select.
 //
 func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
+	t.Helper()
+	WalkAny(t, path, func(t testing.TB, path string) {
+		f(t.(*testing.T), path)
+	})
+}
+
+// WalkAny is like Walk but works over a testing.TB.
+func WalkAny(t testing.TB, path string, f func(t testing.TB, path string)) {
 	finfo, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -421,8 +445,8 @@ func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 			// Temp or hidden file, don't even try processing.
 			continue
 		}
-		t.Run(cutExt(file.Name()), func(t *testing.T) {
-			Walk(t, filepath.Join(path, file.Name()), f)
+		subTest(t, cutExt(file.Name()), func(t testing.TB) {
+			WalkAny(t, filepath.Join(path, file.Name()), f)
 		})
 	}
 }
@@ -453,7 +477,7 @@ func ClearResults(path string) error {
 
 	runTestInternal(
 		&testing.T{}, path, file,
-		func(t *testing.T, d *TestData) string { return "" },
+		func(t testing.TB, d *TestData) string { return "" },
 		true, /* rewrite */
 	)
 
@@ -517,7 +541,7 @@ func (td *TestData) HasArg(key string) bool {
 // td.ScanArgs(t, "arg1", &i1)
 // td.ScanArgs(t, "arg2", &s)
 // td.ScanArgs(t, "arg3", &i2, &i3, &i4)
-func (td *TestData) ScanArgs(t *testing.T, key string, dests ...interface{}) {
+func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 	t.Helper()
 	var arg CmdArg
 	for i := range td.CmdArgs {
@@ -564,7 +588,7 @@ func (arg CmdArg) String() string {
 }
 
 // Scan attempts to parse the value at index i into the dest.
-func (arg CmdArg) Scan(t *testing.T, i int, dest interface{}) {
+func (arg CmdArg) Scan(t testing.TB, i int, dest interface{}) {
 	if err := arg.scanErr(i, dest); err != nil {
 		t.Fatal(err)
 	}

@@ -174,7 +174,7 @@ func TestRewrite(t *testing.T) {
 	sort.Strings(tests)
 
 	for _, test := range tests {
-		t.Run(test, func(t *testing.T) {
+		subTest(t, test, func(t testing.TB) {
 			path := filepath.Join(testDir, fmt.Sprintf("%s-before", test))
 			file, err := os.OpenFile(path, os.O_RDONLY, 0644 /* irrelevant */)
 			if err != nil {
@@ -183,7 +183,7 @@ func TestRewrite(t *testing.T) {
 			defer func() { _ = file.Close() }()
 
 			// Implement a few simple directives.
-			handler := func(t *testing.T, d *TestData) string {
+			handler := func(t testing.TB, d *TestData) string {
 				switch d.Cmd {
 				case "noop":
 					return d.Input
@@ -242,4 +242,14 @@ func TestRewrite(t *testing.T) {
 			}
 		})
 	}
+}
+
+func BenchmarkInput(b *testing.B) {
+	RunTestFromStringAny(b, `
+foo
+----
+unknown command
+`, func(t testing.TB, d *TestData) string {
+		return "unknown command"
+	})
 }

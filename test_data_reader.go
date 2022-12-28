@@ -31,7 +31,7 @@ type testDataReader struct {
 }
 
 func newTestDataReader(
-	t *testing.T, sourceName string, file io.Reader, record bool,
+	t testing.TB, sourceName string, file io.Reader, record bool,
 ) *testDataReader {
 	t.Helper()
 
@@ -47,7 +47,7 @@ func newTestDataReader(
 	}
 }
 
-func (r *testDataReader) Next(t *testing.T) bool {
+func (r *testDataReader) Next(t testing.TB) bool {
 	t.Helper()
 
 	for r.scanner.Scan() {
@@ -121,7 +121,7 @@ func (r *testDataReader) Next(t *testing.T) bool {
 	return false
 }
 
-func (r *testDataReader) readExpected(t *testing.T) {
+func (r *testDataReader) readExpected(t testing.TB) {
 	var buf bytes.Buffer
 	var line string
 	var allowBlankLines bool
