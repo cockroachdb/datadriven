@@ -68,24 +68,24 @@ func init() {
 // testing framework. By convention, test files are typically located in a
 // sub-directory called "testdata". Each test file has the following format:
 //
-//   <command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
-//   <input to the command>
-//   ----
-//   <expected results>
+//	<command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
+//	<input to the command>
+//	----
+//	<expected results>
 //
 // The command input can contain blank lines. However, by default, the expected
 // results cannot contain blank lines. This alternate syntax allows the use of
 // blank lines:
 //
-//   <command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
-//   <input to the command>
-//   ----
-//   ----
-//   <expected results>
+//	<command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
+//	<input to the command>
+//	----
+//	----
+//	<expected results>
 //
-//   <more expected results>
-//   ----
-//   ----
+//	<more expected results>
+//	----
+//	----
 //
 // To execute data-driven tests, pass the path of the test file as well as a
 // function which can interpret and execute whatever commands are present in
@@ -102,11 +102,11 @@ func init() {
 // callback function. Use the provided testing.T instance instead.
 //
 // It is possible for a test to test for an "expected error" as follows:
-// - run the code to test
-// - if an error occurs, report the detail of the error as actual
-//   output.
-// - place the expected error details in the expected results
-//   in the input file.
+//   - run the code to test
+//   - if an error occurs, report the detail of the error as actual
+//     output.
+//   - place the expected error details in the expected results
+//     in the input file.
 //
 // It is also possible for a test to report an _unexpected_ test
 // error by calling t.Error().
@@ -398,27 +398,26 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 //
 // This can be used in conjunction with RunTest. For example:
 //
-//    datadriven.Walk(t, path, func (t *testing.T, path string) {
-//      // initialize per-test state
-//      datadriven.RunTest(t, path, func (t *testing.T, d *datadriven.TestData) string {
-//       // ...
-//      }
-//    }
+//	 datadriven.Walk(t, path, func (t *testing.T, path string) {
+//	   // initialize per-test state
+//	   datadriven.RunTest(t, path, func (t *testing.T, d *datadriven.TestData) string {
+//	    // ...
+//	   }
+//	 }
 //
-//   Files:
-//     testdata/typing
-//     testdata/logprops/scan
-//     testdata/logprops/select
+//	Files:
+//	  testdata/typing
+//	  testdata/logprops/scan
+//	  testdata/logprops/select
 //
-//   If path is "testdata/typing", the function is called once and no subtests
-//   are created.
+// If path is "testdata/typing", the function is called once and no subtests
+// are created.
 //
-//   If path is "testdata/logprops", the function is called two times, in
-//   separate subtests /scan, /select.
+// If path is "testdata/logprops", the function is called two times, in
+// separate subtests /scan, /select.
 //
-//   If path is "testdata", the function is called three times, in subtest
-//   hierarchy /typing, /logprops/scan, /logprops/select.
-//
+// If path is "testdata", the function is called three times, in subtest
+// hierarchy /typing, /logprops/scan, /logprops/select.
 func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
 	t.Helper()
 	WalkAny(t, path, func(t testing.TB, path string) {
@@ -527,20 +526,19 @@ func (td *TestData) HasArg(key string) bool {
 // ScanArgs looks up the first CmdArg matching the given key and scans it into
 // the given destinations in order. If the arg does not exist, the number of
 // destinations does not match that of the arguments, or a destination can not
-// be populated from its matching value, a fatal error results.
-// If the arg exists multiple times, the first occurrence is parsed.
+// be populated from its matching value, a fatal error results. If the arg
+// exists multiple times, the first occurrence is parsed. For example, for a
+// TestData originating from
 //
-// For example, for a TestData originating from
-//
-// cmd arg1=50 arg2=yoruba arg3=(50, 50, 50)
+//	cmd arg1=50 arg2=yoruba arg3=(50, 50, 50)
 //
 // the following would be valid:
 //
-// var i1, i2, i3, i4 int
-// var s string
-// td.ScanArgs(t, "arg1", &i1)
-// td.ScanArgs(t, "arg2", &s)
-// td.ScanArgs(t, "arg3", &i2, &i3, &i4)
+//	var i1, i2, i3, i4 int
+//	var s string
+//	td.ScanArgs(t, "arg1", &i1)
+//	td.ScanArgs(t, "arg2", &s)
+//	td.ScanArgs(t, "arg3", &i2, &i3, &i4)
 func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 	t.Helper()
 	var arg CmdArg
@@ -553,6 +551,21 @@ func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 	if arg.Key == "" {
 		td.Fatalf(t, "missing argument: %s", key)
 	}
+
+	// If only one destination is provided, use scanAll which supports scanning
+	// multiple vallues into a slice destination type.
+	if len(dests) == 1 {
+		if err := arg.scanAll(dests[0]); err != nil {
+			td.Fatalf(t, "%s: failed to scan argument %d: %v", arg.Key, 0, err)
+		}
+		return
+	}
+
+	// Multiple destinations provided; update each corresponding destination to
+	// support invocations of the form:
+	//
+	//   td.ScanArgs(t, "arg3", &i2, &i3, &i4)
+	//
 	if len(dests) != len(arg.Vals) {
 		td.Fatalf(t, "%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
 	}
@@ -566,9 +579,9 @@ func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 
 // CmdArg contains information about an argument on the directive line. An
 // argument is specified in one of the following forms:
-//  - argument
-//  - argument=value
-//  - argument=(values, ...)
+//   - argument
+//   - argument=value
+//   - argument=(values, ...)
 type CmdArg struct {
 	Key  string
 	Vals []string
@@ -592,6 +605,48 @@ func (arg CmdArg) Scan(t testing.TB, i int, dest interface{}) {
 	if err := arg.scanErr(i, dest); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// scanAll is like scanErr but scans all the values into a single destination.
+// It may be used to parse an argument of the form
+//
+//	argument=(val-a, val-b, ...)
+//
+// into a slice.
+func (arg CmdArg) scanAll(dest interface{}) error {
+	// Try supported slice destination types.
+	switch dest := dest.(type) {
+	case *[]string:
+		// Make a copy to avoid unexpected mutation of CmdArg.Vals.
+		*dest = append([]string(nil), arg.Vals...)
+		return nil
+	case *[]int:
+		*dest = make([]int, len(arg.Vals))
+		for i := 0; i < len(arg.Vals); i++ {
+			n, err := strconv.ParseInt(arg.Vals[i], 10, 64)
+			if err != nil {
+				return fmt.Errorf("arg %d: %w", i, err)
+			}
+			(*dest)[i] = int(n)
+		}
+		return nil
+	case *[]uint64:
+		*dest = make([]uint64, len(arg.Vals))
+		for i := 0; i < len(arg.Vals); i++ {
+			n, err := strconv.ParseUint(arg.Vals[i], 10, 64)
+			if err != nil {
+				return fmt.Errorf("arg %d: %w", i, err)
+			}
+			(*dest)[i] = uint64(n)
+		}
+		return nil
+	}
+	// If there's a single value and `dest` is a supported scalar type, we might
+	// still be able to scan it.
+	if len(arg.Vals) == 1 {
+		return arg.scanErr(0, dest)
+	}
+	return fmt.Errorf("unsupported type %T for %q (might be easy to add it)", dest, arg.Key)
 }
 
 // scanErr is like Scan but returns an error rather than taking a testing.T to fatal.

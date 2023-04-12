@@ -150,8 +150,8 @@ func TestDirective(t *testing.T) {
 }
 
 func TestWalk(t *testing.T) {
-	Walk(t, "testdata/walk", func (t *testing.T, path string) {
-		RunTest(t, path, func (t *testing.T, d *TestData) string {
+	Walk(t, "testdata/walk", func(t *testing.T, path string) {
+		RunTest(t, path, func(t *testing.T, d *TestData) string {
 			return fmt.Sprintf("test name: %s\n", t.Name())
 		})
 	})
@@ -242,6 +242,55 @@ func TestRewrite(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestScanArgs(t *testing.T) {
+	RunTestFromString(t, `
+[]string vals=(foo, bar, bax)
+----
+[]string{"foo", "bar", "bax"}
+
+[]int vals=(1, 2, 3, 4)
+----
+[]int{1, 2, 3, 4}
+
+[]uint64 vals=(1, 2, 3, 4)
+----
+[]uint64{0x1, 0x2, 0x3, 0x4}
+
+string vals=(foo)
+----
+"foo"
+
+bool vals=true
+----
+true
+	`, func(t *testing.T, d *TestData) string {
+		switch d.Cmd {
+		case "[]string":
+			var dest []string
+			d.ScanArgs(t, "vals", &dest)
+			return fmt.Sprintf("%#v", dest)
+		case "[]int":
+			var dest []int
+			d.ScanArgs(t, "vals", &dest)
+			return fmt.Sprintf("%#v", dest)
+		case "[]uint64":
+			var dest []uint64
+			d.ScanArgs(t, "vals", &dest)
+			return fmt.Sprintf("%#v", dest)
+		case "string":
+			var dest string
+			d.ScanArgs(t, "vals", &dest)
+			return fmt.Sprintf("%#v", dest)
+		case "bool":
+			var dest bool
+			d.ScanArgs(t, "vals", &dest)
+			return fmt.Sprintf("%#v", dest)
+		default:
+			return fmt.Sprintf("unrecognized type %s", d.Cmd)
+		}
+	})
 }
 
 func BenchmarkInput(b *testing.B) {
