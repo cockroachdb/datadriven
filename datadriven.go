@@ -515,10 +515,29 @@ type TestData struct {
 
 // HasArg checks whether the CmdArgs array contains an entry for the given key.
 func (td *TestData) HasArg(key string) bool {
+	_, ok := td.Arg(key)
+	return ok
+}
+
+// Arg retrieves the first CmdArg matching the given key. The second return
+// value indicates whether such an argument exists.
+func (td *TestData) Arg(key string) (arg CmdArg, ok bool) {
 	for i := range td.CmdArgs {
 		if td.CmdArgs[i].Key == key {
-			return true
+			return td.CmdArgs[i], true
 		}
+	}
+	return arg, false
+}
+
+// MaybeScanArgs behaves identically to ScanArgs, except that if the arg does
+// not exist it leaves the destinations unmodified and returns false. In all
+// other cases it returns true.
+func (td *TestData) MaybeScanArgs(t testing.TB, key string, dests ...interface{}) bool {
+	t.Helper()
+	if arg, ok := td.Arg(key); ok {
+		arg.scan(t, td.Pos, dests...)
+		return true
 	}
 	return false
 }
@@ -541,40 +560,11 @@ func (td *TestData) HasArg(key string) bool {
 //	td.ScanArgs(t, "arg3", &i2, &i3, &i4)
 func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 	t.Helper()
-	var arg CmdArg
-	for i := range td.CmdArgs {
-		if td.CmdArgs[i].Key == key {
-			arg = td.CmdArgs[i]
-			break
-		}
-	}
-	if arg.Key == "" {
+	arg, ok := td.Arg(key)
+	if !ok {
 		td.Fatalf(t, "missing argument: %s", key)
 	}
-
-	// If only one destination is provided, use scanAll which supports scanning
-	// multiple values into a slice destination type.
-	if len(dests) == 1 {
-		if err := arg.scanAll(dests[0]); err != nil {
-			td.Fatalf(t, "%s: failed to scan argument %d: %v", arg.Key, 0, err)
-		}
-		return
-	}
-
-	// Multiple destinations provided; update each corresponding destination to
-	// support invocations of the form:
-	//
-	//   td.ScanArgs(t, "arg3", &i2, &i3, &i4)
-	//
-	if len(dests) != len(arg.Vals) {
-		td.Fatalf(t, "%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
-	}
-
-	for i := range dests {
-		if err := arg.scanScalarErr(i, dests[i]); err != nil {
-			td.Fatalf(t, "%s: failed to scan argument %d: %v", arg.Key, i, err)
-		}
-	}
+	arg.scan(t, td.Pos, dests...)
 }
 
 // CmdArg contains information about an argument on the directive line. An
@@ -602,18 +592,39 @@ func (arg CmdArg) String() string {
 
 // Scan attempts to parse the value at index i into the dest.
 func (arg CmdArg) Scan(t testing.TB, i int, dest interface{}) {
+	t.Helper()
 	if err := arg.scanScalarErr(i, dest); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// scanAll is like scanErr but scans all the values into a single destination.
-// It may be used to parse an argument of the form
-//
-//	argument=(val-a, val-b, ...)
-//
-// into a slice.
-func (arg CmdArg) scanAll(dest interface{}) error {
+func (arg CmdArg) scan(t testing.TB, pos string, dests ...interface{}) {
+	// If only one destination is provided, use scanAllErr which supports
+	// scanning multiple values into a slice destination type.
+	if len(dests) == 1 {
+		if err := arg.scanAllErr(dests[0]); err != nil {
+			t.Fatalf("%s: %s: failed to scan argument %d: %v", pos, arg.Key, 0, err)
+		}
+		return
+	}
+
+	// Multiple destinations provided; update each corresponding destination to
+	// support invocations of the form:
+	//
+	//   td.ScanArgs(t, "arg3", &i2, &i3, &i4)
+	//
+	if len(dests) != len(arg.Vals) {
+		t.Fatalf("%s: %s: got %d destinations, but %d values", pos, arg.Key, len(dests), len(arg.Vals))
+	}
+
+	for i := range dests {
+		if err := arg.scanScalarErr(i, dests[i]); err != nil {
+			t.Fatalf("%s: %s: failed to scan argument %d: %v", pos, arg.Key, i, err)
+		}
+	}
+}
+
+func (arg CmdArg) scanAllErr(dest interface{}) error {
 	// Try supported slice destination types.
 	switch dest := dest.(type) {
 	case *[]string:
