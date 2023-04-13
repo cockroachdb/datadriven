@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -244,6 +245,18 @@ func TestRewrite(t *testing.T) {
 	}
 }
 
+func TestMaybeScan_Noop(t *testing.T) {
+	RunTestFromString(t, `
+cmd
+----
+"", "", ""
+`, func(t *testing.T, d *TestData) string {
+		var x, y, z string
+		d.MaybeScanArgs(t, "vals", &x, &y, &z)
+		return fmt.Sprintf("%q, %q, %q", x, y, z)
+	})
+}
+
 func TestScanArgsExpansion(t *testing.T) {
 	RunTestFromString(t, `
 cmd vals=(foo, bar, bax)
@@ -257,6 +270,19 @@ cmd vals=(foo, bar, bax)
 }
 
 func TestScanArgsSingle(t *testing.T) {
+	checkScanEquivalence := func(d *TestData, dest1, dest2 interface{}) {
+		d.ScanArgs(t, "vals", dest1)
+		if _, ok := d.Arg("vals"); !ok {
+			t.Fatal("`vals` argument not found by TestData.Arg")
+		}
+		if ok := d.MaybeScanArgs(t, "vals", dest2); !ok {
+			t.Fatal("`vals` argument not found by TestData.MaybeScanArgs")
+		}
+		if !reflect.DeepEqual(dest1, dest2) {
+			t.Fatalf("scanned values %#v and %#v are unequal", dest1, dest2)
+		}
+	}
+
 	RunTestFromString(t, `
 []string vals=(foo, bar, bax)
 ----
@@ -280,25 +306,25 @@ true
 	`, func(t *testing.T, d *TestData) string {
 		switch d.Cmd {
 		case "[]string":
-			var dest []string
-			d.ScanArgs(t, "vals", &dest)
-			return fmt.Sprintf("%#v", dest)
+			var dest1, dest2 []string
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
 		case "[]int":
-			var dest []int
-			d.ScanArgs(t, "vals", &dest)
-			return fmt.Sprintf("%#v", dest)
+			var dest1, dest2 []int
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
 		case "[]uint64":
-			var dest []uint64
-			d.ScanArgs(t, "vals", &dest)
-			return fmt.Sprintf("%#v", dest)
+			var dest1, dest2 []uint64
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
 		case "string":
-			var dest string
-			d.ScanArgs(t, "vals", &dest)
-			return fmt.Sprintf("%#v", dest)
+			var dest1, dest2 string
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
 		case "bool":
-			var dest bool
-			d.ScanArgs(t, "vals", &dest)
-			return fmt.Sprintf("%#v", dest)
+			var dest1, dest2 bool
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
 		default:
 			return fmt.Sprintf("unrecognized type %s", d.Cmd)
 		}
