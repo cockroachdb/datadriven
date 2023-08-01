@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -303,6 +304,18 @@ string vals=(foo)
 bool vals=true
 ----
 true
+
+float64 vals=1.1
+----
+1.1
+
+[]float64 vals=(1.1, 2.2, 3.3, 4.4)
+----
+[]float64{1.1, 2.2, 3.3, 4.4}
+
+time.Duration vals=10.0m
+----
+10m0s
 	`, func(t *testing.T, d *TestData) string {
 		switch d.Cmd {
 		case "[]string":
@@ -317,6 +330,18 @@ true
 			var dest1, dest2 []uint64
 			checkScanEquivalence(d, &dest1, &dest2)
 			return fmt.Sprintf("%#v", dest1)
+		case "[]float64":
+			var dest1, dest2 []float64
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
+		case "float64":
+			var dest1, dest2 float64
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
+		case "time.Duration":
+			var dest1, dest2 time.Duration
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%s", dest1)
 		case "string":
 			var dest1, dest2 string
 			checkScanEquivalence(d, &dest1, &dest2)
