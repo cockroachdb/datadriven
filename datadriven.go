@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -651,7 +652,18 @@ func (arg CmdArg) scanAllErr(dest interface{}) error {
 			(*dest)[i] = uint64(n)
 		}
 		return nil
+	case *[]float64:
+		*dest = make([]float64, len(arg.Vals))
+		for i := 0; i < len(arg.Vals); i++ {
+			n, err := strconv.ParseFloat(arg.Vals[i], 64)
+			if err != nil {
+				return fmt.Errorf("arg %d: %w", i, err)
+			}
+			(*dest)[i] = float64(n)
+		}
+		return nil
 	}
+
 	// If there's a single value and `dest` is a supported scalar type, we might
 	// still be able to scan it.
 	if len(arg.Vals) == 1 {
@@ -693,6 +705,18 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 			return err
 		}
 		*dest = b
+	case *float64:
+		t, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return err
+		}
+		*dest = t
+	case *time.Duration:
+		t, err := time.ParseDuration(val)
+		if err != nil {
+			return err
+		}
+		*dest = t
 	default:
 		return fmt.Errorf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
 	}
