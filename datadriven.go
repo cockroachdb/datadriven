@@ -591,6 +591,43 @@ func (arg CmdArg) String() string {
 	}
 }
 
+// FirstVal asserts that arg has at least one value and returns the first one.
+func (arg CmdArg) FirstVal(t testing.TB) string {
+	t.Helper()
+	arg.ExpectNumValsGE(t, 1)
+	return arg.Vals[0]
+}
+
+// SingleVal asserts that arg has exactly one value and returns it.
+func (arg CmdArg) SingleVal(t testing.TB) string {
+	t.Helper()
+	arg.ExpectNumVals(t, 1)
+	return arg.Vals[0]
+}
+
+// TwoVals asserts that arg has exactly two values and returns them.
+func (arg CmdArg) TwoVals(t testing.TB) (string, string) {
+	t.Helper()
+	arg.ExpectNumVals(t, 2)
+	return arg.Vals[0], arg.Vals[1]
+}
+
+// ExpectNumVals asserts that arg has exactly num values.
+func (arg CmdArg) ExpectNumVals(t testing.TB, num int) {
+	t.Helper()
+	if len(arg.Vals) != num {
+		t.Fatalf("argument %q requires %d values, has %d", arg.Key, num, len(arg.Vals))
+	}
+}
+
+// ExpectNumValsGE asserts that arg has at least minNum values.
+func (arg CmdArg) ExpectNumValsGE(t testing.TB, minNum int) {
+	t.Helper()
+	if len(arg.Vals) < minNum {
+		t.Fatalf("argument %q requires at least %d values, has %d", arg.Key, minNum, len(arg.Vals))
+	}
+}
+
 // Scan attempts to parse the value at index i into the dest.
 func (arg CmdArg) Scan(t testing.TB, i int, dest interface{}) {
 	t.Helper()
