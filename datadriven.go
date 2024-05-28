@@ -736,6 +736,12 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 			return err
 		}
 		*dest = n
+	case *uint32:
+		n, err := strconv.ParseUint(val, 10, 32)
+		if err != nil {
+			return err
+		}
+		*dest = n
 	case *bool:
 		b, err := strconv.ParseBool(val)
 		if err != nil {
