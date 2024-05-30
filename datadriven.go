@@ -741,7 +741,7 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 		if err != nil {
 			return err
 		}
-		*dest = n
+		*dest = uint32(n)
 	case *bool:
 		b, err := strconv.ParseBool(val)
 		if err != nil {
