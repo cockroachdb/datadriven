@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+
+  linux:
+    name: go-linux
+    strategy:
+      matrix:
+        go: ["1.20", "1.21", "1.22"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "${{ matrix.go }}"
+
+      - run: go test ./...
+
+  linux-32bit:
+    name: go-linux-32bit
+    strategy:
+      matrix:
+        go: ["1.20", "1.21", "1.22"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "${{ matrix.go }}"
+
+      - run: go test ./...
+
+  darwin:
+    name: go-macos
+    strategy:
+      matrix:
+        go: ["1.20", "1.21", "1.22"]
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "${{ matrix.go }}"
+
+      - run: go test ./...
