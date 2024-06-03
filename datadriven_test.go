@@ -18,11 +18,13 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,6 +135,33 @@ five
 lines
 of
 output`
+		default:
+			t.Fatalf("unknown directive: %s", d.Cmd)
+		}
+		return d.Expected
+	})
+}
+
+func TestRetry(t *testing.T) {
+	var v atomic.Uint32
+	RunTest(t, "testdata/retry", func(t *testing.T, d *TestData) string {
+		switch d.Cmd {
+		case "inc":
+			n := 1
+			d.MaybeScanArgs(t, "n", &n)
+			for i := 0; i < n; i++ {
+				go func() {
+					time.Sleep(time.Duration(rand.Intn(10)) * time.Microsecond)
+					v.Add(1)
+				}()
+			}
+			return ""
+
+		case "read":
+			return d.Retry(t, func() string {
+				return fmt.Sprint(v.Load())
+			})
+
 		default:
 			t.Fatalf("unknown directive: %s", d.Cmd)
 		}
