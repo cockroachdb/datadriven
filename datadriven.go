@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -568,6 +569,53 @@ func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 	arg.scan(t, td.Pos, dests...)
 }
 
+// Retry is used for tests that depend on background goroutines to finish work.
+// It takes a function that produces the output of the testcase and calls it
+// repeatedly until it matches the expected output (for at most 1 second).
+//
+// Returns the last value returned by f (which can be directly returned from the
+// function passed to RunTest).
+//
+// If --rewrite is used, just sleeps for 100ms.
+func (td *TestData) Retry(tb testing.TB, f func() string) string {
+	return td.RetryFor(tb, time.Second, f)
+}
+
+// RetryFor is like Retry but with a custom timeout.
+func (td *TestData) RetryFor(tb testing.TB, d time.Duration, f func() string) string {
+	if td.Rewrite {
+		// For rewrite mode, we have nothing to compare the output to. Just sleep a
+		// reasonable amount, under the assumption that --rewrite won't be used
+		// under stress or a loaded system.
+		time.Sleep(d / 10)
+		return f()
+	}
+	runtime.Gosched()
+	// We are going to evaluate f until it produces the correct answer numStable
+	// times in a row.
+	const numAttempts = 100
+	const numStable = 3
+	// numOk is the number of consecutive calls of f() that have returned the
+	// correct answer.
+	numOk := 0
+	expected := strings.TrimSpace(td.Expected)
+	for i := 0; ; i++ {
+		s := f()
+		if strings.TrimSpace(s) == expected {
+			numOk++
+		} else {
+			numOk = 0
+		}
+		if numOk == numStable || i == numAttempts {
+			if i >= numStable {
+				td.Logf(tb, "retried for %s (%d times)", time.Duration(i-numStable+1)*d/numAttempts, i-numStable+1)
+			}
+			return s
+		}
+		time.Sleep(d/numAttempts + 1)
+	}
+}
+
 // CmdArg contains information about an argument on the directive line. An
 // argument is specified in one of the following forms:
 //   - argument
@@ -764,6 +812,13 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 		return fmt.Errorf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
 	}
 	return nil
+}
+
+// Logf is a wrapper for tb.Logf which adds file position information, so
+// that it's easy to locate the source of the log.
+func (td TestData) Logf(tb testing.TB, format string, args ...interface{}) {
+	tb.Helper()
+	tb.Logf("%s: %s", td.Pos, fmt.Sprintf(format, args...))
 }
 
 // Fatalf wraps a fatal testing error with test file position information, so
