@@ -112,16 +112,16 @@ func init() {
 //
 // It is also possible for a test to report an _unexpected_ test
 // error by calling t.Error().
-func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string) {
+func RunTest(t *testing.T, path string, f func(t *testing.T, td *TestData) string) {
 	t.Helper()
 
-	RunTestAny(t, path, func(t testing.TB, d *TestData) string {
-		return f(t.(*testing.T), d)
+	RunTestAny(t, path, func(t testing.TB, td *TestData) string {
+		return f(t.(*testing.T), td)
 	})
 }
 
 // RunTestAny is like RunTest but works over a testing.TB.
-func RunTestAny(t testing.TB, path string, f func(t testing.TB, d *TestData) string) {
+func RunTestAny(t testing.TB, path string, f func(t testing.TB, td *TestData) string) {
 	mode := os.O_RDONLY
 	if *rewriteTestFiles {
 		// We only open read-write if rewriting, so as to enable running
@@ -158,15 +158,15 @@ func RunTestAny(t testing.TB, path string, f func(t testing.TB, d *TestData) str
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
 // directly.
-func RunTestFromString(t *testing.T, input string, f func(t *testing.T, d *TestData) string) {
+func RunTestFromString(t *testing.T, input string, f func(t *testing.T, td *TestData) string) {
 	t.Helper()
-	RunTestFromStringAny(t, input, func(t testing.TB, d *TestData) string {
-		return f(t.(*testing.T), d)
+	RunTestFromStringAny(t, input, func(t testing.TB, td *TestData) string {
+		return f(t.(*testing.T), td)
 	})
 }
 
 // RunTestFromStringAny is like RunTestFromString but works with a testing.TB.
-func RunTestFromStringAny(t testing.TB, input string, f func(t testing.TB, d *TestData) string) {
+func RunTestFromStringAny(t testing.TB, input string, f func(t testing.TB, td *TestData) string) {
 	t.Helper()
 	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, *rewriteTestFiles)
 }
@@ -175,7 +175,7 @@ func runTestInternal(
 	t testing.TB,
 	sourceName string,
 	reader io.Reader,
-	f func(t testing.TB, d *TestData) string,
+	f func(t testing.TB, td *TestData) string,
 	rewrite bool,
 ) (rewriteOutput []byte) {
 	t.Helper()
@@ -478,7 +478,7 @@ func ClearResults(path string) error {
 
 	runTestInternal(
 		&testing.T{}, path, file,
-		func(t testing.TB, d *TestData) string { return "" },
+		func(testing.TB, *TestData) string { return "" },
 		true, /* rewrite */
 	)
 
