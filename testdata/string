@@ -1,0 +1,27 @@
+simple
+input-line-1
+input-line-2
+----
+simple
+input-line-1
+input-line-2
+
+with some args=2
+input-line-1
+input-line-2
+----
+with some args=2
+input-line-1
+input-line-2
+
+args that=(1) render=(1,2) differently=(1,2,3)
+input-line-1
+input-line-2
+----
+args that=1 render=(1, 2) differently=(1, 2, 3)
+input-line-1
+input-line-2
+
+noinput
+----
+noinput

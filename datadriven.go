@@ -122,6 +122,8 @@ func RunTest(t *testing.T, path string, f func(t *testing.T, d *TestData) string
 
 // RunTestAny is like RunTest but works over a testing.TB.
 func RunTestAny(t testing.TB, path string, f func(t testing.TB, d *TestData) string) {
+	t.Helper()
+
 	mode := os.O_RDONLY
 	if *rewriteTestFiles {
 		// We only open read-write if rewriting, so as to enable running
@@ -378,19 +380,14 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 				B:       actualLines,
 			})
 			if err == nil {
-				t.Fatalf("\n%s:\n %s\noutput didn't match expected:\n%s", d.Pos, d.Input, diff)
+				t.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", d.Pos, d.String(), diff)
 				return
 			}
 			t.Logf("Failed to produce diff %v", err)
 		}
-		t.Fatalf("\n%s:\n %s\nexpected:\n%s\nfound:\n%s", d.Pos, d.Input, d.Expected, actual)
+		t.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", d.Pos, d.String(), d.Expected, actual)
 	} else if Verbose() {
-		input := d.Input
-		if input == "" {
-			input = "<no input to command>"
-		}
-		// TODO(tbg): it's awkward to reproduce the args, but it would be helpful.
-		t.Logf("\n%s:\n%s [%d args]\n%s\n----\n%s", d.Pos, d.Cmd, len(d.CmdArgs), input, actual)
+		t.Logf("\n%s:\n%s----\n%s", d.Pos, d.String(), actual)
 	}
 	return
 }
@@ -513,6 +510,24 @@ type TestData struct {
 
 	// Rewrite is set if the test is being run with the -rewrite flag.
 	Rewrite bool
+}
+
+// FullCmd renders the command and the arguments.
+func (td *TestData) FullCmd() string {
+	fields := make([]string, 0, len(td.CmdArgs)+1)
+	fields = append(fields, td.Cmd)
+	for i := range td.CmdArgs {
+		fields = append(fields, td.CmdArgs[i].String())
+	}
+	return strings.Join(fields, " ")
+}
+
+// String renders the entire testcase. The string ends in a newline.
+func (td *TestData) String() string {
+	if td.Input == "" {
+		return td.FullCmd() + "\n"
+	}
+	return fmt.Sprintf("%s\n%s\n", td.FullCmd(), td.Input)
 }
 
 // HasArg checks whether the CmdArgs array contains an entry for the given key.
