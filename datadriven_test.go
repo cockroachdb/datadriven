@@ -385,6 +385,12 @@ time.Duration vals=10.0m
 	})
 }
 
+func TestString(t *testing.T) {
+	RunTest(t, "testdata/string", func(t *testing.T, d *TestData) string {
+		return d.String()
+	})
+}
+
 func BenchmarkInput(b *testing.B) {
 	RunTestFromStringAny(b, `
 foo
