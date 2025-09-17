@@ -326,6 +326,10 @@ func TestScanArgsSingle(t *testing.T) {
 ----
 []uint64{0x1, 0x2, 0x3, 0x4}
 
+[]int64 vals=(0xA, 0x10)
+----
+[]int64{10, 16}
+
 string vals=(foo)
 ----
 "foo"
@@ -353,6 +357,10 @@ time.Duration vals=10.0m
 			return fmt.Sprintf("%#v", dest1)
 		case "[]int":
 			var dest1, dest2 []int
+			checkScanEquivalence(d, &dest1, &dest2)
+			return fmt.Sprintf("%#v", dest1)
+		case "[]int64":
+			var dest1, dest2 []int64
 			checkScanEquivalence(d, &dest1, &dest2)
 			return fmt.Sprintf("%#v", dest1)
 		case "[]uint64":
