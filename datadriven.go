@@ -331,10 +331,15 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 
 	d := &r.data
 	actual := func() string {
+		fReturned := false
 		defer func() {
 			if r := recover(); r != nil {
 				t.Logf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 				panic(r)
+			} else if !fReturned {
+				// t.Fatal calls runtime.Goexit() which runs the defers but there is no
+				// panic to recover.
+				t.Logf("\nfatal during %s:\n%s\n", d.Pos, d.Input)
 			}
 		}()
 
@@ -355,6 +360,7 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 		}()
 
 		actual := f(t, d)
+		fReturned = true
 		if actual != "" && !strings.HasSuffix(actual, "\n") {
 			actual += "\n"
 		}
@@ -855,6 +861,9 @@ func (td TestData) Logf(tb testing.TB, format string, args ...interface{}) {
 
 // Fatalf wraps a fatal testing error with test file position information, so
 // that it's easy to locate the source of the error.
+//
+// Note: tb.Fatalf can also be used directly; the test file position information
+// will be logged.
 func (td TestData) Fatalf(tb testing.TB, format string, args ...interface{}) {
 	tb.Helper()
 	tb.Fatalf("%s: %s", td.Pos, fmt.Sprintf(format, args...))
