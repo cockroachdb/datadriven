@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -743,41 +744,19 @@ func (arg CmdArg) scan(t testing.TB, pos string, dests ...interface{}) {
 }
 
 func (arg CmdArg) scanAllErr(dest interface{}) error {
-	// Try supported slice destination types.
-	switch dest := dest.(type) {
-	case *[]string:
-		// Make a copy to avoid unexpected mutation of CmdArg.Vals.
-		*dest = append([]string(nil), arg.Vals...)
-		return nil
-	case *[]int:
-		*dest = make([]int, len(arg.Vals))
-		for i := 0; i < len(arg.Vals); i++ {
-			n, err := strconv.ParseInt(arg.Vals[i], 10, 64)
-			if err != nil {
-				return fmt.Errorf("arg %d: %w", i, err)
+	rv := reflect.ValueOf(dest)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return fmt.Errorf("out must be a non-nil pointer to a slice")
+	}
+
+	if sliceV := rv.Elem(); sliceV.Kind() == reflect.Slice {
+		slice := reflect.MakeSlice(sliceV.Type(), len(arg.Vals), len(arg.Vals))
+		for i := range arg.Vals {
+			if err := arg.scanScalarErr(i, slice.Index(i).Addr().Interface()); err != nil {
+				return err
 			}
-			(*dest)[i] = int(n)
 		}
-		return nil
-	case *[]uint64:
-		*dest = make([]uint64, len(arg.Vals))
-		for i := 0; i < len(arg.Vals); i++ {
-			n, err := strconv.ParseUint(arg.Vals[i], 10, 64)
-			if err != nil {
-				return fmt.Errorf("arg %d: %w", i, err)
-			}
-			(*dest)[i] = uint64(n)
-		}
-		return nil
-	case *[]float64:
-		*dest = make([]float64, len(arg.Vals))
-		for i := 0; i < len(arg.Vals); i++ {
-			n, err := strconv.ParseFloat(arg.Vals[i], 64)
-			if err != nil {
-				return fmt.Errorf("arg %d: %w", i, err)
-			}
-			(*dest)[i] = float64(n)
-		}
+		sliceV.Set(slice)
 		return nil
 	}
 
@@ -795,55 +774,23 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 		return fmt.Errorf("cannot scan index %d of key %s", i, arg.Key)
 	}
 	val := arg.Vals[i]
+
+	// Special cases.
 	switch dest := dest.(type) {
-	case *string:
-		*dest = val
-	case *int:
-		n, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return err
-		}
-		*dest = int(n) // assume 64bit ints
-	case *int64:
-		n, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return err
-		}
-		*dest = n
-	case *uint64:
-		n, err := strconv.ParseUint(val, 10, 64)
-		if err != nil {
-			return err
-		}
-		*dest = n
-	case *uint32:
-		n, err := strconv.ParseUint(val, 10, 32)
-		if err != nil {
-			return err
-		}
-		*dest = uint32(n)
-	case *bool:
-		b, err := strconv.ParseBool(val)
-		if err != nil {
-			return err
-		}
-		*dest = b
-	case *float64:
-		t, err := strconv.ParseFloat(val, 64)
-		if err != nil {
-			return err
-		}
-		*dest = t
 	case *time.Duration:
 		t, err := time.ParseDuration(val)
 		if err != nil {
 			return err
 		}
 		*dest = t
-	default:
-		return fmt.Errorf("unsupported type %T for destination #%d (might be easy to add it)", dest, i+1)
+		return nil
 	}
-	return nil
+
+	rv := reflect.ValueOf(dest)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return fmt.Errorf("out must be a non-nil pointer")
+	}
+	return parseArgVal(val, rv.Elem())
 }
 
 // Logf is a wrapper for tb.Logf which adds file position information, so
@@ -896,4 +843,52 @@ func indentLines(str string) string {
 		}
 	}
 	return b.String()
+}
+
+// parseArgVal parses s and stores it into dest, which must have type int*,
+// uint*, float*, string, bool, or a named type with one of those underlying
+// kinds.
+//
+// Uses base 0 for ints/uints (supports 0x, 0o, 0b).
+func parseArgVal(s string, dest reflect.Value) error {
+	t := dest.Type()
+
+	s = strings.TrimSpace(s)
+	switch t.Kind() {
+	case reflect.String:
+		dest.SetString(s)
+
+	case reflect.Bool:
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+		dest.SetBool(b)
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, err := strconv.ParseInt(s, 0, int(t.Bits()))
+		if err != nil {
+			return fmt.Errorf("parse %q as %s: %w", s, t, err)
+		}
+		dest.SetInt(n)
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		n, err := strconv.ParseUint(s, 0, int(t.Bits()))
+		if err != nil {
+			return fmt.Errorf("parse %q as %s: %w", s, t, err)
+		}
+		dest.SetUint(n)
+
+	case reflect.Float32, reflect.Float64:
+		f, err := strconv.ParseFloat(s, int(t.Bits()))
+		if err != nil {
+			return fmt.Errorf("parse %q as %s: %w", s, t, err)
+		}
+		dest.SetFloat(f)
+
+	default:
+		return fmt.Errorf("dest must point to a numeric type; got %s", t)
+	}
+
+	return nil
 }
