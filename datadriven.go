@@ -347,7 +347,6 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 		// Set up a goroutine to log periodically if the function is taking a long
 		// time. This is useful to pinpoint the cause of a test timeout.
 		done := make(chan struct{})
-		defer close(done)
 		go func() {
 			startTime := time.Now()
 			for {
@@ -358,6 +357,11 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 					t.Logf("%s: still running after %s\n", d.Pos, time.Since(startTime))
 				}
 			}
+		}()
+		defer func() {
+			// Because the channel is unbuffered, we wait here until the goroutine is
+			// exiting.
+			done <- struct{}{}
 		}()
 
 		actual := f(t, d)
