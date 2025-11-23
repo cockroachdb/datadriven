@@ -879,14 +879,14 @@ func parseArgVal(s string, dest reflect.Value) error {
 		dest.SetBool(b)
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		n, err := strconv.ParseInt(s, 0, int(t.Bits()))
+		n, err := strconv.ParseInt(s, 10, int(t.Bits()))
 		if err != nil {
 			return fmt.Errorf("parse %q as %s: %w", s, t, err)
 		}
 		dest.SetInt(n)
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		n, err := strconv.ParseUint(s, 0, int(t.Bits()))
+		n, err := strconv.ParseUint(s, 10, int(t.Bits()))
 		if err != nil {
 			return fmt.Errorf("parse %q as %s: %w", s, t, err)
 		}
