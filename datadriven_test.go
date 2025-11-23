@@ -326,7 +326,7 @@ func TestScanArgsSingle(t *testing.T) {
 ----
 []uint64{0x1, 0x2, 0x3, 0x4}
 
-[]int64 vals=(0xA, 0x10)
+[]int64 vals=(10, 000016)
 ----
 []int64{10, 16}
 
