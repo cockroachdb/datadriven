@@ -46,6 +46,10 @@ var (
 	)
 )
 
+// SlowDirectiveLogPeriod is the period with which we log slow-running
+// directives. Set to 0 to disable the logging.
+var SlowDirectiveLogPeriod = 10 * time.Second
+
 // Verbose returns true iff -datadriven-quiet was not passed.
 func Verbose() bool {
 	return testing.Verbose() && !*quietLog
@@ -344,25 +348,27 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 			}
 		}()
 
-		// Set up a goroutine to log periodically if the function is taking a long
-		// time. This is useful to pinpoint the cause of a test timeout.
-		done := make(chan struct{})
-		go func() {
-			startTime := time.Now()
-			for {
-				select {
-				case <-done:
-					return
-				case <-time.After(10 * time.Second):
-					t.Logf("%s: still running after %s\n", d.Pos, time.Since(startTime))
+		if SlowDirectiveLogPeriod > 0 {
+			// Set up a goroutine to log periodically if the function is taking a long
+			// time. This is useful to pinpoint the cause of a test timeout.
+			done := make(chan struct{})
+			go func() {
+				startTime := time.Now()
+				for {
+					select {
+					case <-done:
+						return
+					case <-time.After(SlowDirectiveLogPeriod):
+						t.Logf("%s: still running after %s\n", d.Pos, time.Since(startTime))
+					}
 				}
-			}
-		}()
-		defer func() {
-			// Because the channel is unbuffered, we wait here until the goroutine is
-			// exiting.
-			done <- struct{}{}
-		}()
+			}()
+			defer func() {
+				// Because the channel is unbuffered, we wait here until the goroutine is
+				// exiting.
+				done <- struct{}{}
+			}()
+		}
 
 		actual := f(t, d)
 		fReturned = true
