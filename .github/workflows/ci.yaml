@@ -8,6 +8,10 @@ on:
     branches:
       - master
 
+
+permissions:
+  contents: read
+
 jobs:
 
   linux:
