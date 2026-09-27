@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/datadriven/v2"
 )
 
 func main() {

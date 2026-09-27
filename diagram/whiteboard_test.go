@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/datadriven/v2"
 )
 
 func TestDataDriven(t *testing.T) {

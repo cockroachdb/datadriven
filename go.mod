@@ -1,4 +1,4 @@
-module github.com/cockroachdb/datadriven
+module github.com/cockroachdb/datadriven/v2
 
 go 1.21
 
