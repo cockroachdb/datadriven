@@ -148,7 +148,7 @@ func TestRetry(t *testing.T) {
 		switch d.Cmd {
 		case "inc":
 			n := 1
-			d.MaybeScanArgs(t, "n", &n)
+			d.MaybeScanArgs("n", &n)
 			for i := 0; i < n; i++ {
 				go func() {
 					time.Sleep(time.Duration(rand.Intn(10)) * time.Microsecond)
@@ -158,7 +158,7 @@ func TestRetry(t *testing.T) {
 			return ""
 
 		case "read":
-			return d.Retry(t, func() string {
+			return d.Retry(func() string {
 				return fmt.Sprint(v.Load())
 			})
 
@@ -282,7 +282,7 @@ cmd
 "", "", ""
 `, func(t *T, d *TestData) string {
 		var x, y, z string
-		d.MaybeScanArgs(t, "vals", &x, &y, &z)
+		d.MaybeScanArgs("vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
 	})
 }
@@ -294,22 +294,22 @@ cmd vals=(foo, bar, bax)
 "foo", "bar", "bax"
 `, func(t *T, d *TestData) string {
 		var x, y, z string
-		d.ScanArgs(t, "vals", &x, &y, &z)
+		d.ScanArgs("vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
 	})
 }
 
 func TestScanArgsSingle(t *testing.T) {
 	checkScanEquivalence := func(d *TestData, dest1, dest2 interface{}) {
-		d.ScanArgs(t, "vals", dest1)
+		d.ScanArgs("vals", dest1)
 		if _, ok := d.Arg("vals"); !ok {
-			t.Fatal("`vals` argument not found by TestData.Arg")
+			d.T.Fatal("`vals` argument not found by TestData.Arg")
 		}
-		if ok := d.MaybeScanArgs(t, "vals", dest2); !ok {
-			t.Fatal("`vals` argument not found by TestData.MaybeScanArgs")
+		if ok := d.MaybeScanArgs("vals", dest2); !ok {
+			d.T.Fatal("`vals` argument not found by TestData.MaybeScanArgs")
 		}
 		if !reflect.DeepEqual(dest1, dest2) {
-			t.Fatalf("scanned values %#v and %#v are unequal", dest1, dest2)
+			d.T.Fatalf("scanned values %#v and %#v are unequal", dest1, dest2)
 		}
 	}
 
@@ -408,3 +408,17 @@ unknown command
 		return "unknown command"
 	})
 }
+
+// BEGIN: TestData.T required
+func TestTestDataWithoutT(t *testing.T) {
+	defer func() {
+		if r := fmt.Sprint(recover()); !strings.Contains(r, "TestData.T is not set") {
+			t.Fatalf("unexpected panic: %s", r)
+		}
+	}()
+	td := TestData{Cmd: "cmd"}
+	var x int
+	td.MaybeScanArgs("x", &x)
+}
+
+// END: TestData.T required

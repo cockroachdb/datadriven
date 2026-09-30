@@ -257,20 +257,20 @@ func TestAnnotations(t *testing.T) {
 		case "skipf":
 			t.Skipf("skipf %d", 1)
 		case "td-logf":
-			d.Logf(t, "td-logf %d", 1)
+			d.Logf("td-logf %d", 1)
 		case "td-fatalf":
-			d.Fatalf(t, "td-fatalf %d", 1)
+			d.Fatalf("td-fatalf %d", 1)
 		case "scan":
 			var x int
-			d.ScanArgs(t, "x", &x)
+			d.ScanArgs("x", &x)
 		case "single-val":
-			d.CmdArgs[0].SingleVal(t)
+			d.CmdArgs[0].SingleVal(d.T)
 		case "cleanup":
 			pos := d.Pos
 			t.Cleanup(func() { t.Logf("cleanup from %s", pos) })
 		case "td-cleanup":
 			// The TestData remains valid after the directive.
-			t.Cleanup(func() { d.Logf(t, "td cleanup from %s", d.Pos) })
+			t.Cleanup(func() { d.Logf("td cleanup from %s", d.Pos) })
 		case "return-x":
 			return "x"
 		case "nested":
@@ -432,9 +432,9 @@ func TestTOutput(t *testing.T) {
 		{"skipf-nl", func(t *T, d *TestData) { t.Skipf("skipf-nl %d\n", 1) }, "skipf-nl 1"},
 		{"tb-helper", func(t *T, d *TestData) { tbHelperErrorf(t, "tb-helper %d", 1) }, "tb-helper 1"},
 		{"t-helper", func(t *T, d *TestData) { tHelperErrorf(t, "t-helper %d", 1) }, "t-helper 1"},
-		{"td-logf", func(t *T, d *TestData) { d.Logf(t, "td-logf %d", 1) }, "td-logf 1"},
-		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf(t, "td-fatalf %d", 1) }, "td-fatalf 1"},
-		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanArgs(t, "x", &x) }, "missing argument: x"},
+		{"td-logf", func(t *T, d *TestData) { d.Logf("td-logf %d", 1) }, "td-logf 1"},
+		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
+		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanArgs("x", &x) }, "missing argument: x"},
 	}
 
 	if os.Getenv(tOutputChildEnv) != "" {

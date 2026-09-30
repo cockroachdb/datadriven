@@ -555,9 +555,13 @@ type TestData struct {
 	// Rewrite is set if the test is being run with the -rewrite flag.
 	Rewrite bool
 
-	// T is the testing.TB for the directive. When running via RunTest or
-	// RunTestFromString, it is the wrapper passed to the callback, which
-	// annotates errors, skips and logs with the position of the directive.
+	// T is the testing.TB for the directive; it is used by the TestData methods
+	// to report errors. When running via RunTest or RunTestFromString, it is the
+	// wrapper passed to the callback, which annotates errors, skips and logs with
+	// the position of the directive.
+	//
+	// When a TestData is constructed manually, T must be set before using
+	// ScanArgs, MaybeScanArgs, Retry, RetryFor, Logf or Fatalf.
 	T testing.TB
 }
 
@@ -599,7 +603,8 @@ func (td *TestData) Arg(key string) (arg CmdArg, ok bool) {
 // MaybeScanArgs behaves identically to ScanArgs, except that if the arg does
 // not exist it leaves the destinations unmodified and returns false. In all
 // other cases it returns true.
-func (td *TestData) MaybeScanArgs(t testing.TB, key string, dests ...interface{}) bool {
+func (td *TestData) MaybeScanArgs(key string, dests ...interface{}) bool {
+	t := td.tb()
 	t.Helper()
 	if arg, ok := td.Arg(key); ok {
 		arg.scan(t, dests...)
@@ -621,14 +626,15 @@ func (td *TestData) MaybeScanArgs(t testing.TB, key string, dests ...interface{}
 //
 //	var i1, i2, i3, i4 int
 //	var s string
-//	td.ScanArgs(t, "arg1", &i1)
-//	td.ScanArgs(t, "arg2", &s)
-//	td.ScanArgs(t, "arg3", &i2, &i3, &i4)
-func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
+//	td.ScanArgs("arg1", &i1)
+//	td.ScanArgs("arg2", &s)
+//	td.ScanArgs("arg3", &i2, &i3, &i4)
+func (td *TestData) ScanArgs(key string, dests ...interface{}) {
+	t := td.tb()
 	t.Helper()
 	arg, ok := td.Arg(key)
 	if !ok {
-		td.Fatalf(t, "missing argument: %s", key)
+		t.Fatalf("missing argument: %s", key)
 	}
 	arg.scan(t, dests...)
 }
@@ -641,12 +647,14 @@ func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 // function passed to RunTest).
 //
 // If --rewrite is used, just sleeps for 100ms.
-func (td *TestData) Retry(tb testing.TB, f func() string) string {
-	return td.RetryFor(tb, time.Second, f)
+func (td *TestData) Retry(f func() string) string {
+	td.tb().Helper()
+	return td.RetryFor(time.Second, f)
 }
 
 // RetryFor is like Retry but with a custom timeout.
-func (td *TestData) RetryFor(tb testing.TB, d time.Duration, f func() string) string {
+func (td *TestData) RetryFor(d time.Duration, f func() string) string {
+	td.tb().Helper()
 	if td.Rewrite {
 		// For rewrite mode, we have nothing to compare the output to. Just sleep a
 		// reasonable amount, under the assumption that --rewrite won't be used
@@ -672,7 +680,7 @@ func (td *TestData) RetryFor(tb testing.TB, d time.Duration, f func() string) st
 		}
 		if numOk == numStable || i == numAttempts {
 			if i >= numStable {
-				td.Logf(tb, "retried for %s (%d times)", time.Duration(i-numStable+1)*d/numAttempts, i-numStable+1)
+				td.Logf("retried for %s (%d times)", time.Duration(i-numStable+1)*d/numAttempts, i-numStable+1)
 			}
 			return s
 		}
@@ -686,9 +694,8 @@ func (td *TestData) RetryFor(tb testing.TB, d time.Duration, f func() string) st
 //   - argument=value
 //   - argument=(values, ...)
 //
-// The methods which take a testing.TB report errors through it; pass the
-// wrapper given to the callback so that the errors are annotated with the
-// directive position.
+// The methods which take a testing.TB report errors through it; pass TestData.T
+// so that the errors are annotated with the directive position.
 type CmdArg struct {
 	Key  string
 	Vals []string
@@ -766,7 +773,7 @@ func (arg CmdArg) scan(t testing.TB, dests ...interface{}) {
 	// Multiple destinations provided; update each corresponding destination to
 	// support invocations of the form:
 	//
-	//   td.ScanArgs(t, "arg3", &i2, &i3, &i4)
+	//   td.ScanArgs("arg3", &i2, &i3, &i4)
 	//
 	if len(dests) != len(arg.Vals) {
 		t.Fatalf("%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
@@ -829,20 +836,28 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 	return parseArgVal(val, rv.Elem())
 }
 
-// Logf is a wrapper for tb.Logf. When tb is the wrapper passed to the
-// callback, the message is annotated with file position information, so that
-// it's easy to locate the source of the log.
-func (td TestData) Logf(tb testing.TB, format string, args ...interface{}) {
-	tb.Helper()
-	tb.Logf(format, args...)
+// Logf is a shorthand for td.T.Logf, which adds file position information, so
+// that it's easy to locate the source of the log.
+func (td TestData) Logf(format string, args ...interface{}) {
+	t := td.tb()
+	t.Helper()
+	t.Logf(format, args...)
 }
 
-// Fatalf is a wrapper for tb.Fatalf. When tb is the wrapper passed to the
-// callback, the message is annotated with file position information, so that
-// it's easy to locate the source of the error.
-func (td TestData) Fatalf(tb testing.TB, format string, args ...interface{}) {
-	tb.Helper()
-	tb.Fatalf(format, args...)
+// Fatalf is a shorthand for td.T.Fatalf, which adds file position information,
+// so that it's easy to locate the source of the error.
+func (td TestData) Fatalf(format string, args ...interface{}) {
+	t := td.tb()
+	t.Helper()
+	t.Fatalf(format, args...)
+}
+
+// tb returns td.T, or panics with an explanation if it is not set.
+func (td *TestData) tb() testing.TB {
+	if td.T == nil {
+		panic("datadriven: TestData.T is not set (it must be set for TestData values constructed manually)")
+	}
+	return td.T
 }
 
 // hasBlankLine returns true iff `s` contains at least one line that's
