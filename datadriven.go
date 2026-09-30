@@ -99,10 +99,20 @@ func init() {
 // RunTest() compares with the expected results. If the two are not
 // equal, the test is marked to fail.
 //
+// RunTest works over any testing.TB, typically a *testing.T or a *testing.B.
+// The function is passed a *TBWrapper which wraps it (a *T for a *testing.T, a
+// *B for a *testing.B) and annotates errors, skips and logs with the position
+// of the current directive in the test file; the same wrapper is available as
+// td.T.
+//
+// "subtest" directives are not supported when running over a *testing.B
+// (testing.B.Run runs the function of a sub-benchmark multiple times, but the
+// directives can only be read once).
+//
 // Note that RunTest() creates a sub-instance of testing.T for each
-// directive in the input file. It is thus unsafe/invalid to call
+// "subtest" directive in the input file. It is thus unsafe/invalid to call
 // e.g. Fatal() or Skip() on the parent testing.T from inside the
-// callback function. Use the provided testing.T instance instead.
+// callback function. Use the provided wrapper instead.
 //
 // It is possible for a test to test for an "expected error" as follows:
 //   - run the code to test
@@ -113,16 +123,7 @@ func init() {
 //
 // It is also possible for a test to report an _unexpected_ test
 // error by calling t.Error().
-func RunTest(t *testing.T, path string, f func(t *testing.T, td *TestData) string) {
-	t.Helper()
-
-	RunTestAny(t, path, func(t testing.TB, td *TestData) string {
-		return f(t.(*testing.T), td)
-	})
-}
-
-// RunTestAny is like RunTest but works over a testing.TB.
-func RunTestAny(t testing.TB, path string, f func(t testing.TB, td *TestData) string) {
+func RunTest[U testing.TB](t U, path string, f func(t *TBWrapper[U], td *TestData) string) {
 	t.Helper()
 
 	mode := os.O_RDONLY
@@ -161,29 +162,30 @@ func RunTestAny(t testing.TB, path string, f func(t testing.TB, td *TestData) st
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
 // directly.
-func RunTestFromString(t *testing.T, input string, f func(t *testing.T, td *TestData) string) {
-	t.Helper()
-	RunTestFromStringAny(t, input, func(t testing.TB, td *TestData) string {
-		return f(t.(*testing.T), td)
-	})
-}
-
-// RunTestFromStringAny is like RunTestFromString but works with a testing.TB.
-func RunTestFromStringAny(t testing.TB, input string, f func(t testing.TB, td *TestData) string) {
+func RunTestFromString[U testing.TB](
+	t U, input string, f func(t *TBWrapper[U], td *TestData) string,
+) {
 	t.Helper()
 	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, *rewriteTestFiles)
 }
 
-func runTestInternal(
-	t testing.TB,
+func runTestInternal[U testing.TB](
+	t U,
 	sourceName string,
 	reader io.Reader,
-	f func(t testing.TB, td *TestData) string,
+	f func(t *TBWrapper[U], td *TestData) string,
 	rewrite bool,
 ) (rewriteOutput []byte) {
 	t.Helper()
+	// If a wrapper passed to a callback is passed back to us as a testing.TB
+	// (e.g. to run a nested test file), use the underlying testing.TB: the
+	// nested file has its own directive positions.
+	t = unwrap(t)
 
 	r := newTestDataReader(t, sourceName, reader, rewrite)
+	// Wrappers retained beyond this point (e.g. used in a t.Cleanup function)
+	// should not annotate messages with the position of the last directive.
+	defer r.pos.set("")
 	for r.Next(t) {
 		runDirectiveOrSubTest(t, r, "" /*mandatorySubTestPrefix*/, f)
 	}
@@ -202,11 +204,11 @@ func runTestInternal(
 // runDirectiveOrSubTest runs either a "subtest" directive or an
 // actual test directive. The "mandatorySubTestPrefix" argument indicates
 // a mandatory prefix required from all sub-test names at this point.
-func runDirectiveOrSubTest(
-	t testing.TB,
+func runDirectiveOrSubTest[U testing.TB](
+	t U,
 	r *testDataReader,
 	mandatorySubTestPrefix string,
-	f func(testing.TB, *TestData) string,
+	f func(t *TBWrapper[U], td *TestData) string,
 ) {
 	t.Helper()
 	if subTestName, ok := isSubTestStart(t, r, mandatorySubTestPrefix); ok {
@@ -227,8 +229,8 @@ func runDirectiveOrSubTest(
 // The first parameter `subTestName` is the full path to the subtest,
 // including the parent subtest names as prefix. This is used to
 // validate the nesting and thus prevent mistakes.
-func runSubTest(
-	subTestName string, t testing.TB, r *testDataReader, f func(testing.TB, *TestData) string,
+func runSubTest[U testing.TB](
+	subTestName string, t U, r *testDataReader, f func(t *TBWrapper[U], td *TestData) string,
 ) {
 	// Remember the current reader position in case we need to spell out
 	// an error message below.
@@ -246,7 +248,10 @@ func runSubTest(
 	testingSubTestName := subTestName[strings.LastIndex(subTestName, "/")+1:]
 
 	// Begin the sub-test.
-	subTest(t, testingSubTestName, func(t testing.TB) {
+	subTest(t, testingSubTestName, func(t U) {
+		// Cleanup functions registered on the subtest run when it finishes; they
+		// should not be annotated with the position of its last directive.
+		defer r.pos.set("")
 		defer func() {
 			// Skips are signalled using Goexit() so we must catch it /
 			// remember it here.
@@ -272,20 +277,20 @@ func runSubTest(
 		// - the rewrite logic must be careful to keep the input as-is
 		//   for the skipped sub-test, while proceeding to rewrite for
 		//   non-skipped tests.
-		r.data.Fatalf(t,
+		r.fatalf(t,
 			"cannot use t.Skip inside subtest\n%s: subtest started here", subTestStartPos)
 	}
 
 	if seenSubTestEnd && len(r.data.CmdArgs) == 2 && r.data.CmdArgs[1].Key != subTestName {
 		// If a subtest name was provided after "subtest end", ensure that it matches.
-		r.data.Fatalf(t,
+		r.fatalf(t,
 			"mismatched subtest end directive: expected %q, got %q", r.data.CmdArgs[1].Key, subTestName)
 	}
 
 	if !seenSubTestEnd && !t.Failed() {
 		// We only report missing "subtest end" if there was no error otherwise;
 		// for if there was an error, the reading would have stopped.
-		r.data.Fatalf(t,
+		r.fatalf(t,
 			"EOF encountered without subtest end directive\n%s: subtest started here", subTestStartPos)
 	}
 
@@ -295,15 +300,18 @@ func isSubTestStart(t testing.TB, r *testDataReader, mandatorySubTestPrefix stri
 	if r.data.Cmd != "subtest" {
 		return "", false
 	}
+	if _, ok := innermost(t).(*testing.B); ok {
+		r.fatalf(t, "subtest directives are not supported in benchmarks")
+	}
 	if len(r.data.CmdArgs) != 1 {
-		r.data.Fatalf(t, "invalid syntax for subtest")
+		r.fatalf(t, "invalid syntax for subtest")
 	}
 	subTestName := r.data.CmdArgs[0].Key
 	if subTestName == "end" {
-		r.data.Fatalf(t, "subtest end without corresponding start")
+		r.fatalf(t, "subtest end without corresponding start")
 	}
 	if !strings.HasPrefix(subTestName, mandatorySubTestPrefix) {
-		r.data.Fatalf(t, "name of nested subtest must begin with %q", mandatorySubTestPrefix)
+		r.fatalf(t, "name of nested subtest must begin with %q", mandatorySubTestPrefix)
 	}
 	return subTestName, true
 }
@@ -316,7 +324,7 @@ func isSubTestEnd(t testing.TB, r *testDataReader) bool {
 		return false
 	}
 	if len(r.data.CmdArgs) > 2 {
-		r.data.Fatalf(t, "invalid syntax for subtest end")
+		r.fatalf(t, "invalid syntax for subtest end")
 	}
 	return true
 }
@@ -327,20 +335,28 @@ func isSubTestEnd(t testing.TB, r *testDataReader) bool {
 // instead of returned because the testing module implements t.Skip
 // and t.Fatal using panics, and we're not guaranteed to get back to
 // the caller via a return in those cases.
-func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData) string) {
+func runDirective[U testing.TB](
+	t U, r *testDataReader, f func(t *TBWrapper[U], td *TestData) string,
+) {
 	t.Helper()
+	// Framework messages are reported directly to the innermost testing.TB (in
+	// case t is itself a wrapper), so that they are not annotated.
+	raw := innermost(t)
 
-	d := &r.data
+	// Each directive gets its own TestData, so that it remains valid (and
+	// unchanged) if the callback retains it (e.g. in a t.Cleanup function).
+	d := new(TestData)
+	*d = r.data
 	actual := func() string {
 		fReturned := false
 		defer func() {
 			if r := recover(); r != nil {
-				t.Logf("\npanic during %s:\n%s\n", d.Pos, d.Input)
+				raw.Logf("\npanic during %s:\n%s\n", d.Pos, d.Input)
 				panic(r)
 			} else if !fReturned {
 				// t.Fatal calls runtime.Goexit() which runs the defers but there is no
 				// panic to recover.
-				t.Logf("\nfatal during %s:\n%s\n", d.Pos, d.Input)
+				raw.Logf("\nfatal during %s:\n%s\n", d.Pos, d.Input)
 			}
 		}()
 
@@ -354,7 +370,7 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 				case <-done:
 					return
 				case <-time.After(10 * time.Second):
-					t.Logf("%s: still running after %s\n", d.Pos, time.Since(startTime))
+					raw.Logf("%s: still running after %s\n", d.Pos, time.Since(startTime))
 				}
 			}
 		}()
@@ -364,7 +380,10 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 			done <- struct{}{}
 		}()
 
-		actual := f(t, d)
+		r.pos.set(d.Pos)
+		w := newWrapper(t, &r.pos)
+		d.T = w
+		actual := f(w, d)
 		fReturned = true
 		if actual != "" && !strings.HasSuffix(actual, "\n") {
 			actual += "\n"
@@ -408,14 +427,14 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 				B:       actualLines,
 			})
 			if err == nil {
-				t.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(d.Pos), indentLines(d.String()), indentLines(diff))
+				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(d.Pos), indentLines(d.String()), indentLines(diff))
 				return
 			}
-			t.Logf("Failed to produce diff %v", err)
+			raw.Logf("Failed to produce diff %v", err)
 		}
-		t.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", d.Pos, indentLines(d.String()), indentLines(d.Expected), indentLines(actual))
+		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", d.Pos, indentLines(d.String()), indentLines(d.Expected), indentLines(actual))
 	} else if Verbose() {
-		t.Logf("\n%s:\n%s  ----\n%s", d.Pos, indentLines(d.String()), indentLines(actual))
+		raw.Logf("\n%s:\n%s  ----\n%s", d.Pos, indentLines(d.String()), indentLines(actual))
 	}
 	return
 }
@@ -425,12 +444,13 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 //
 // This can be used in conjunction with RunTest. For example:
 //
-//	 datadriven.Walk(t, path, func (t *testing.T, path string) {
-//	   // initialize per-test state
-//	   datadriven.RunTest(t, path, func (t *testing.T, d *datadriven.TestData) string {
-//	    // ...
-//	   }
-//	 }
+//	datadriven.Walk(t, path, func(t *testing.T, path string) {
+//		// initialize per-test state
+//		datadriven.RunTest(t, path, func(t *datadriven.T, d *datadriven.TestData) string {
+//			// ...
+//			return ""
+//		})
+//	})
 //
 //	Files:
 //	  testdata/typing
@@ -445,15 +465,11 @@ func runDirective(t testing.TB, r *testDataReader, f func(testing.TB, *TestData)
 //
 // If path is "testdata", the function is called three times, in subtest
 // hierarchy /typing, /logprops/scan, /logprops/select.
-func Walk(t *testing.T, path string, f func(t *testing.T, path string)) {
+//
+// Walk works over any testing.TB, typically a *testing.T or a *testing.B; the
+// function is passed the testing.TB of the (sub)test.
+func Walk[U testing.TB](t U, path string, f func(t U, path string)) {
 	t.Helper()
-	WalkAny(t, path, func(t testing.TB, path string) {
-		f(t.(*testing.T), path)
-	})
-}
-
-// WalkAny is like Walk but works over a testing.TB.
-func WalkAny(t testing.TB, path string, f func(t testing.TB, path string)) {
 	finfo, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -471,8 +487,8 @@ func WalkAny(t testing.TB, path string, f func(t testing.TB, path string)) {
 			// Temp or hidden file, don't even try processing.
 			continue
 		}
-		subTest(t, cutExt(file.Name()), func(t testing.TB) {
-			WalkAny(t, filepath.Join(path, file.Name()), f)
+		subTest(t, cutExt(file.Name()), func(t U) {
+			Walk(t, filepath.Join(path, file.Name()), f)
 		})
 	}
 }
@@ -503,7 +519,7 @@ func ClearResults(path string) error {
 
 	runTestInternal(
 		&testing.T{}, path, file,
-		func(testing.TB, *TestData) string { return "" },
+		func(*T, *TestData) string { return "" },
 		true, /* rewrite */
 	)
 
@@ -538,6 +554,11 @@ type TestData struct {
 
 	// Rewrite is set if the test is being run with the -rewrite flag.
 	Rewrite bool
+
+	// T is the testing.TB for the directive. When running via RunTest or
+	// RunTestFromString, it is the wrapper passed to the callback, which
+	// annotates errors, skips and logs with the position of the directive.
+	T testing.TB
 }
 
 // FullCmd renders the command and the arguments.
@@ -581,7 +602,7 @@ func (td *TestData) Arg(key string) (arg CmdArg, ok bool) {
 func (td *TestData) MaybeScanArgs(t testing.TB, key string, dests ...interface{}) bool {
 	t.Helper()
 	if arg, ok := td.Arg(key); ok {
-		arg.scan(t, td.Pos, dests...)
+		arg.scan(t, dests...)
 		return true
 	}
 	return false
@@ -609,7 +630,7 @@ func (td *TestData) ScanArgs(t testing.TB, key string, dests ...interface{}) {
 	if !ok {
 		td.Fatalf(t, "missing argument: %s", key)
 	}
-	arg.scan(t, td.Pos, dests...)
+	arg.scan(t, dests...)
 }
 
 // Retry is used for tests that depend on background goroutines to finish work.
@@ -664,6 +685,10 @@ func (td *TestData) RetryFor(tb testing.TB, d time.Duration, f func() string) st
 //   - argument
 //   - argument=value
 //   - argument=(values, ...)
+//
+// The methods which take a testing.TB report errors through it; pass the
+// wrapper given to the callback so that the errors are annotated with the
+// directive position.
 type CmdArg struct {
 	Key  string
 	Vals []string
@@ -727,12 +752,13 @@ func (arg CmdArg) Scan(t testing.TB, i int, dest interface{}) {
 	}
 }
 
-func (arg CmdArg) scan(t testing.TB, pos string, dests ...interface{}) {
+func (arg CmdArg) scan(t testing.TB, dests ...interface{}) {
+	t.Helper()
 	// If only one destination is provided, use scanAllErr which supports
 	// scanning multiple values into a slice destination type.
 	if len(dests) == 1 {
 		if err := arg.scanAllErr(dests[0]); err != nil {
-			t.Fatalf("%s: %s: failed to scan argument %d: %v", pos, arg.Key, 0, err)
+			t.Fatalf("%s: failed to scan argument %d: %v", arg.Key, 0, err)
 		}
 		return
 	}
@@ -743,12 +769,12 @@ func (arg CmdArg) scan(t testing.TB, pos string, dests ...interface{}) {
 	//   td.ScanArgs(t, "arg3", &i2, &i3, &i4)
 	//
 	if len(dests) != len(arg.Vals) {
-		t.Fatalf("%s: %s: got %d destinations, but %d values", pos, arg.Key, len(dests), len(arg.Vals))
+		t.Fatalf("%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
 	}
 
 	for i := range dests {
 		if err := arg.scanScalarErr(i, dests[i]); err != nil {
-			t.Fatalf("%s: %s: failed to scan argument %d: %v", pos, arg.Key, i, err)
+			t.Fatalf("%s: failed to scan argument %d: %v", arg.Key, i, err)
 		}
 	}
 }
@@ -803,21 +829,20 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 	return parseArgVal(val, rv.Elem())
 }
 
-// Logf is a wrapper for tb.Logf which adds file position information, so
-// that it's easy to locate the source of the log.
+// Logf is a wrapper for tb.Logf. When tb is the wrapper passed to the
+// callback, the message is annotated with file position information, so that
+// it's easy to locate the source of the log.
 func (td TestData) Logf(tb testing.TB, format string, args ...interface{}) {
 	tb.Helper()
-	tb.Logf("%s: %s", td.Pos, fmt.Sprintf(format, args...))
+	tb.Logf(format, args...)
 }
 
-// Fatalf wraps a fatal testing error with test file position information, so
-// that it's easy to locate the source of the error.
-//
-// Note: tb.Fatalf can also be used directly; the test file position information
-// will be logged.
+// Fatalf is a wrapper for tb.Fatalf. When tb is the wrapper passed to the
+// callback, the message is annotated with file position information, so that
+// it's easy to locate the source of the error.
 func (td TestData) Fatalf(tb testing.TB, format string, args ...interface{}) {
 	tb.Helper()
-	tb.Fatalf("%s: %s", td.Pos, fmt.Sprintf(format, args...))
+	tb.Fatalf(format, args...)
 }
 
 // hasBlankLine returns true iff `s` contains at least one line that's

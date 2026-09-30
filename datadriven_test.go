@@ -48,7 +48,7 @@ unknown command
 bar
 ----
 unknown command
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		if d.Input != "sentence" {
 			return "unknown command"
 		}
@@ -72,7 +72,7 @@ parse
 xx a=b b=c c=(1,2,3)
 ----
 "xx" [a=b b=c c=(1, 2, 3)]
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		cmd, args, err := ParseLine(d.Input)
 		if err != nil {
 			return fmt.Errorf("here: %w", err).Error()
@@ -89,7 +89,7 @@ skip
 # This error should never happen.
 error
 ----
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "skip":
 			// Verify that calling t.Skip() does not fail with an API error on
@@ -104,7 +104,7 @@ error
 }
 
 func TestSubTest(t *testing.T) {
-	RunTest(t, "testdata/subtest", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/subtest", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "hello":
 			return d.CmdArgs[0].Key + " was said"
@@ -123,7 +123,7 @@ func TestSubTest(t *testing.T) {
 }
 
 func TestMultiLineTest(t *testing.T) {
-	RunTest(t, "testdata/multiline", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/multiline", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "small":
 			return `just
@@ -144,7 +144,7 @@ output`
 
 func TestRetry(t *testing.T) {
 	var v atomic.Uint32
-	RunTest(t, "testdata/retry", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/retry", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "inc":
 			n := 1
@@ -170,7 +170,7 @@ func TestRetry(t *testing.T) {
 }
 
 func TestDirective(t *testing.T) {
-	RunTest(t, "testdata/directive", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/directive", func(t *T, d *TestData) string {
 		var buf bytes.Buffer
 		fmt.Fprintf(&buf, "cmd: %s\n%d arguments\n", d.Cmd, len(d.CmdArgs))
 		for _, a := range d.CmdArgs {
@@ -182,7 +182,7 @@ func TestDirective(t *testing.T) {
 
 func TestWalk(t *testing.T) {
 	Walk(t, "testdata/walk", func(t *testing.T, path string) {
-		RunTest(t, path, func(t *testing.T, d *TestData) string {
+		RunTest(t, path, func(t *T, d *TestData) string {
 			return fmt.Sprintf("test name: %s\n", t.Name())
 		})
 	})
@@ -205,7 +205,7 @@ func TestRewrite(t *testing.T) {
 	sort.Strings(tests)
 
 	for _, test := range tests {
-		subTest(t, test, func(t testing.TB) {
+		subTest(t, test, func(t *testing.T) {
 			path := filepath.Join(testDir, fmt.Sprintf("%s-before", test))
 			file, err := os.OpenFile(path, os.O_RDONLY, 0644 /* irrelevant */)
 			if err != nil {
@@ -214,7 +214,7 @@ func TestRewrite(t *testing.T) {
 			defer func() { _ = file.Close() }()
 
 			// Implement a few simple directives.
-			handler := func(t testing.TB, d *TestData) string {
+			handler := func(t *T, d *TestData) string {
 				switch d.Cmd {
 				case "noop":
 					return d.Input
@@ -280,7 +280,7 @@ func TestMaybeScan_Noop(t *testing.T) {
 cmd
 ----
 "", "", ""
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		var x, y, z string
 		d.MaybeScanArgs(t, "vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
@@ -292,7 +292,7 @@ func TestScanArgsExpansion(t *testing.T) {
 cmd vals=(foo, bar, bax)
 ----
 "foo", "bar", "bax"
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		var x, y, z string
 		d.ScanArgs(t, "vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
@@ -349,7 +349,7 @@ float64 vals=1.1
 time.Duration vals=10.0m
 ----
 10m0s
-	`, func(t *testing.T, d *TestData) string {
+	`, func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "[]string":
 			var dest1, dest2 []string
@@ -394,17 +394,17 @@ time.Duration vals=10.0m
 }
 
 func TestString(t *testing.T) {
-	RunTest(t, "testdata/string", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/string", func(t *T, d *TestData) string {
 		return d.String()
 	})
 }
 
 func BenchmarkInput(b *testing.B) {
-	RunTestFromStringAny(b, `
+	RunTestFromString(b, `
 foo
 ----
 unknown command
-`, func(t testing.TB, d *TestData) string {
+`, func(b *B, d *TestData) string {
 		return "unknown command"
 	})
 }

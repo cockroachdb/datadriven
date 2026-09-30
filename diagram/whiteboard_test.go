@@ -24,7 +24,7 @@ import (
 )
 
 func TestDataDriven(t *testing.T) {
-	datadriven.RunTest(t, "testdata/whiteboard", func(t *testing.T, d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/whiteboard", func(t *datadriven.T, d *datadriven.TestData) string {
 		var wb Whiteboard
 		switch d.Cmd {
 		case "simple":

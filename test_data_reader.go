@@ -28,6 +28,9 @@ type testDataReader struct {
 	scanner    *lineScanner
 	data       TestData
 	rewrite    *bytes.Buffer
+	// pos is the position of the directive that is currently running; it is
+	// used by the T wrappers to annotate messages.
+	pos directivePos
 }
 
 func newTestDataReader(
@@ -48,6 +51,7 @@ func newTestDataReader(
 }
 
 func (r *testDataReader) Next(t testing.TB) bool {
+	t = innermost(t)
 	t.Helper()
 
 	for r.scanner.Scan() {
@@ -176,6 +180,13 @@ func (r *testDataReader) readExpected(t testing.TB) {
 	}
 
 	r.data.Expected = buf.String()
+}
+
+// fatalf fails the test with a message annotated with the current position.
+func (r *testDataReader) fatalf(t testing.TB, format string, args ...interface{}) {
+	t = innermost(t)
+	t.Helper()
+	t.Fatalf("%s: %s", r.data.Pos, fmt.Sprintf(format, args...))
 }
 
 func (r *testDataReader) emit(s string) {
