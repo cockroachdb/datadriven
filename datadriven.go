@@ -518,7 +518,8 @@ type TestData struct {
 	// Cmd is the first string on the directive line (up to the first whitespace).
 	Cmd string
 
-	// CmdArgs contains the k/v arguments to the command.
+	// CmdArgs contains the k/v arguments to the command. PopArg removes
+	// arguments from the front.
 	CmdArgs []CmdArg
 
 	// Input is the text between the first directive line and the ---- separator.
@@ -540,7 +541,8 @@ type TestData struct {
 	// the position of the directive.
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// ScanArgs, MaybeScanArgs, Retry, RetryFor, Logf or Fatalf.
+	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Logf or
+	// Fatalf.
 	T testing.TB
 
 	// directive is the original directive line (with any continuation lines
@@ -549,7 +551,8 @@ type TestData struct {
 	directive string
 }
 
-// FullCmd renders the command and the arguments.
+// FullCmd renders the command and the arguments (which reflect any changes to
+// CmdArgs, e.g. by PopArg).
 func (td *TestData) FullCmd() string {
 	fields := make([]string, 0, len(td.CmdArgs)+1)
 	fields = append(fields, td.Cmd)
@@ -639,6 +642,31 @@ func (td *TestData) ScanArgs(key string, dests ...interface{}) {
 		t.Fatalf("missing argument: %s", key)
 	}
 	arg.scan(t, dests...)
+}
+
+// PopArg removes the first argument from CmdArgs and returns it, rendered in
+// the directive line syntax (see CmdArg.String; e.g. "c=(1,2)" is returned as
+// "c=(1, 2)"). It is useful for directives with positional arguments; for
+// example, for
+//
+//	cmd foo bar n=5
+//
+// the following would be valid:
+//
+//	a := td.PopArg() // "foo"
+//	b := td.PopArg() // "bar"
+//	td.ScanArgs("n", &n)
+//
+// It is a fatal error if there are no arguments left.
+func (td *TestData) PopArg() string {
+	t := td.tb()
+	t.Helper()
+	if len(td.CmdArgs) == 0 {
+		t.Fatalf("PopArg: no arguments left (directive: %s)", td.directiveLine())
+	}
+	arg := td.CmdArgs[0]
+	td.CmdArgs = td.CmdArgs[1:]
+	return arg.String()
 }
 
 // Retry is used for tests that depend on background goroutines to finish work.
