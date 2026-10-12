@@ -124,7 +124,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 			r.readExpected(t)
 		}
 
-		r.data.Rewrite = *rewriteTestFiles
+		r.data.Rewrite = rewriteFlag()
 		return true
 	}
 	return false

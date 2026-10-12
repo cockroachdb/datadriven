@@ -237,7 +237,7 @@ func TestRewrite(t *testing.T) {
 			rewriteData := runTestInternal(t, path, file, handler, true /* rewrite */)
 
 			afterPath := filepath.Join(testDir, fmt.Sprintf("%s-after", test))
-			if *rewriteTestFiles {
+			if rewriteFlag() {
 				// We are rewriting the rewrite tests. Dump the output into -after files
 				out, err := os.Create(afterPath)
 				defer func() { _ = out.Close() }()

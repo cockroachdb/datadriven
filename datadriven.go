@@ -34,36 +34,69 @@ import (
 )
 
 var (
-	rewriteTestFiles = flag.Bool(
-		"rewrite", false,
+	rewriteFlag = boolFlag(
+		flag.CommandLine, "rewrite",
 		"ignore the expected results and rewrite the test files with the actual results from this "+
 			"run. Used to update tests when a change affects many cases; please verify the testfile "+
 			"diffs carefully!",
 	)
 
-	quietLog = flag.Bool(
-		"datadriven-quiet", false,
+	quietFlag = boolFlag(
+		flag.CommandLine, "datadriven-quiet",
 		"avoid echoing the directives and responses from test files.",
 	)
 )
 
-// Verbose returns true iff -datadriven-quiet was not passed.
+// boolFlag defines a bool flag in the flag set, or reuses it if it is already
+// defined. This allows v1 of this package (which defines the same flags on the
+// command-line flag set, and panics if they are already defined) to be linked
+// in the same binary. This relies on v1 being initialized first: Go initializes
+// packages in import path order (among those whose dependencies are
+// initialized), and v1.0.2 and later only depend on the standard library and
+// go-difflib, which are initialized by the time we are ready. Older versions of
+// v1 depend on github.com/cockroachdb/errors and can be initialized after us.
+func boolFlag(fs *flag.FlagSet, name, usage string) func() bool {
+	if f := fs.Lookup(name); f != nil {
+		g, ok := f.Value.(flag.Getter)
+		if ok {
+			_, ok = g.Get().(bool)
+		}
+		if !ok {
+			panic(fmt.Sprintf("datadriven: flag -%s is already defined, with a non-bool type", name))
+		}
+		return func() bool { return g.Get().(bool) }
+	}
+	p := fs.Bool(name, false, usage)
+	return func() bool { return *p }
+}
+
+// Rewrite returns true if -rewrite was passed: test files are rewritten with
+// the actual results (see RunTest). It is only meaningful after the flags are
+// parsed (e.g. inside a test).
+func Rewrite() bool {
+	return rewriteFlag()
+}
+
+// Verbose returns true if directives and their outputs are logged: the test is
+// run with -test.v, and neither -datadriven-quiet nor DATADRIVEN_QUIET_LOG=true
+// is set.
 func Verbose() bool {
-	return testing.Verbose() && !*quietLog
+	return testing.Verbose() && !quietFlag()
 }
 
 // In CockroachDB we want to quiesce all the logs across all packages.
 // If we had only a flag to work with, we'd get command line parsing
 // errors on all packages that do not use datadriven. So
-// we make do by also making a command line parameter available.
+// we make do by also making an environment variable available.
 func init() {
 	const quietEnvVar = "DATADRIVEN_QUIET_LOG"
 	if str, ok := os.LookupEnv(quietEnvVar); ok {
-		v, err := strconv.ParseBool(str)
-		if err != nil {
+		if _, err := strconv.ParseBool(str); err != nil {
 			panic(fmt.Sprintf("error parsing %s: %s", quietEnvVar, err))
 		}
-		*quietLog = v
+		if err := flag.Set("datadriven-quiet", str); err != nil {
+			panic(fmt.Sprintf("error setting -datadriven-quiet from %s: %s", quietEnvVar, err))
+		}
 	}
 }
 
@@ -128,7 +161,7 @@ func RunTest[U testing.TB](t U, path string, f func(t *TBWrapper[U], td *TestDat
 	t.Helper()
 
 	mode := os.O_RDONLY
-	if *rewriteTestFiles {
+	if rewriteFlag() {
 		// We only open read-write if rewriting, so as to enable running
 		// tests on read-only copies of the source tree.
 		mode = os.O_RDWR
@@ -147,8 +180,8 @@ func RunTest[U testing.TB](t U, path string, f func(t *TBWrapper[U], td *TestDat
 		t.Fatalf("%s is a directory, not a file; consider using datadriven.Walk", path)
 	}
 
-	rewriteData := runTestInternal(t, path, file, f, *rewriteTestFiles)
-	if *rewriteTestFiles {
+	rewriteData := runTestInternal(t, path, file, f, rewriteFlag())
+	if rewriteFlag() {
 		if err := rewriteFile(file, rewriteData); err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +205,7 @@ func RunTestFromString[U testing.TB](
 	t U, input string, f func(t *TBWrapper[U], td *TestData) string,
 ) {
 	t.Helper()
-	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, *rewriteTestFiles)
+	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, rewriteFlag())
 }
 
 func runTestInternal[U testing.TB](
