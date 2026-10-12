@@ -148,16 +148,21 @@ func RunTest[U testing.TB](t U, path string, f func(t *TBWrapper[U], td *TestDat
 
 	rewriteData := runTestInternal(t, path, file, f, *rewriteTestFiles)
 	if *rewriteTestFiles {
-		if _, err := file.WriteAt(rewriteData, 0); err != nil {
-			t.Fatal(err)
-		}
-		if err := file.Truncate(int64(len(rewriteData))); err != nil {
-			t.Fatal(err)
-		}
-		if err := file.Sync(); err != nil {
+		if err := rewriteFile(file, rewriteData); err != nil {
 			t.Fatal(err)
 		}
 	}
+}
+
+// rewriteFile replaces the contents of the file with the given data.
+func rewriteFile(file *os.File, data []byte) error {
+	if _, err := file.WriteAt(data, 0); err != nil {
+		return err
+	}
+	if err := file.Truncate(int64(len(data))); err != nil {
+		return err
+	}
+	return file.Sync()
 }
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
@@ -498,32 +503,6 @@ func Walk[U testing.TB](t U, path string, f func(t U, path string)) {
 func cutExt(fileName string) string {
 	extStart := len(fileName) - len(filepath.Ext(fileName))
 	return fileName[:extStart]
-}
-
-func ClearResults(path string) error {
-	file, err := os.OpenFile(path, os.O_RDWR, 0644 /* irrelevant */)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	finfo, err := file.Stat()
-	if err != nil {
-		return err
-	}
-
-	if finfo.IsDir() {
-		return fmt.Errorf("%s is a directory, not a file", path)
-	}
-
-	runTestInternal(
-		&testing.T{}, path, file,
-		func(*T, *TestData) string { return "" },
-		true, /* rewrite */
-	)
-
-	return nil
 }
 
 // Ignore files named .XXXX, XXX~ or #XXX#.
