@@ -432,6 +432,8 @@ func TestTOutput(t *testing.T) {
 		{"skipf-nl", func(t *T, d *TestData) { t.Skipf("skipf-nl %d\n", 1) }, "skipf-nl 1"},
 		{"tb-helper", func(t *T, d *TestData) { tbHelperErrorf(t, "tb-helper %d", 1) }, "tb-helper 1"},
 		{"t-helper", func(t *T, d *TestData) { tHelperErrorf(t, "t-helper %d", 1) }, "t-helper 1"},
+		// The position is not added again if the message already starts with it.
+		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-logf", func(t *T, d *TestData) { d.Logf("td-logf %d", 1) }, "td-logf 1"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
 		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanArgs("x", &x) }, "missing argument: x"},

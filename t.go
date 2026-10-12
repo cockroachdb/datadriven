@@ -26,7 +26,7 @@ import (
 // RunTestFromString callbacks. Error, Errorf, Fatal, Fatalf, Skip, Skipf, Log
 // and Logf prefix the message with the position (file:line) of the directive
 // that is currently running (or of the current input line, see
-// TestData.InputLines).
+// TestData.InputLines), unless the message already starts with it.
 //
 // The position is that of the directive running at the time of the call, not
 // the directive for which the wrapper was passed to the callback. This means
@@ -214,16 +214,28 @@ func (p *directivePos) get() string {
 	return ""
 }
 
-// prefix prepends the current position (if any) to the given message. A nil
-// directivePos (see Wrap) has no position.
+// prefix prepends the current position (if any) to the given message, unless
+// the message already starts with it (e.g. t.Fatalf("%s: ...", td.Pos, ...)). A
+// nil directivePos (see Wrap) has no position.
 func (p *directivePos) prefix(msg string) string {
 	if p == nil {
 		return msg
 	}
-	if pos := p.get(); pos != "" {
+	if pos := p.get(); pos != "" && !hasPosPrefix(msg, pos) {
 		return pos + ": " + msg
 	}
 	return msg
+}
+
+// hasPosPrefix returns true if msg starts with pos (ignoring leading
+// whitespace), followed by a colon, whitespace, or the end of the message.
+func hasPosPrefix(msg, pos string) bool {
+	m := strings.TrimLeft(msg, " \t\n")
+	if !strings.HasPrefix(m, pos) {
+		return false
+	}
+	rest := m[len(pos):]
+	return rest == "" || strings.IndexByte(": \t\n", rest[0]) >= 0
 }
 
 // sprintln formats the arguments like testing.T.Log does.
