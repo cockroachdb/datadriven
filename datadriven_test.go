@@ -17,7 +17,7 @@ package datadriven
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -190,7 +190,7 @@ func TestWalk(t *testing.T) {
 
 func TestRewrite(t *testing.T) {
 	const testDir = "testdata/rewrite"
-	files, err := ioutil.ReadDir(testDir)
+	files, err := os.ReadDir(testDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestRewrite(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				expected, err := ioutil.ReadAll(after)
+				expected, err := io.ReadAll(after)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -300,7 +300,7 @@ cmd vals=(foo, bar, bax)
 }
 
 func TestScanArgsSingle(t *testing.T) {
-	checkScanEquivalence := func(d *TestData, dest1, dest2 interface{}) {
+	checkScanEquivalence := func(d *TestData, dest1, dest2 any) {
 		d.ScanArgs("vals", dest1)
 		if _, ok := d.Arg("vals"); !ok {
 			d.T.Fatal("`vals` argument not found by TestData.Arg")

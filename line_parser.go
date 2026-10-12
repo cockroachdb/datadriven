@@ -26,15 +26,16 @@ import (
 // An input directive line is a command optionally followed by a list of
 // arguments. Arguments may or may not have values and are specified with one of
 // the forms:
-//  - <argname>                            # No values.
-//  - <argname>=<value>                    # Single value.
-//  - <argname>=(<value1>, <value2>, ...)  # Multiple values.
+//   - <argname>                            # No values.
+//   - <argname>=<value>                    # Single value.
+//   - <argname>=(<value1>, <value2>, ...)  # Multiple values.
 //
 // Note that in the last case, we allow the values to contain parens; the
 // parsing will take nesting into account. For example:
-//   cmd exprs=(a + (b + c), d + f)
-// is valid and produces the expected values for the argument.
 //
+//	cmd exprs=(a + (b + c), d + f)
+//
+// is valid and produces the expected values for the argument.
 func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" {

@@ -93,6 +93,9 @@ func TestScanErrors(t *testing.T) {
 			"cmd b=yes", func(d *TestData) { ScanArg[bool](d, "b") },
 			`<string>:1: argument "b": strconv.ParseBool: parsing "yes": invalid syntax`,
 		},
+		{"cmd a", func(d *TestData) { d.CmdArgs[0].FirstVal(d.T) }, `<string>:1: argument "a" requires at least 1 value, has 0`},
+		{"cmd a=(1,2)", func(d *TestData) { d.CmdArgs[0].SingleVal(d.T) }, `<string>:1: argument "a" requires 1 values, has 2`},
+		{"cmd a=(1,2,3)", func(d *TestData) { d.CmdArgs[0].TwoVals(d.T) }, `<string>:1: argument "a" requires 2 values, has 3`},
 		{
 			"cmd n=x", func(d *TestData) { ScanArgOr(d, "n", 1) },
 			`<string>:1: argument "n": parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
@@ -111,5 +114,18 @@ func TestScanErrors(t *testing.T) {
 				t.Fatalf("expected:\n  %s\ngot:\n  %s", tc.expected, strings.Join(rec.msgs, "\n  "))
 			}
 		})
+	}
+}
+
+func TestCmdArgVals(t *testing.T) {
+	a := CmdArg{Key: "a", Vals: []string{"x", "y"}}
+	if v := a.FirstVal(t); v != "x" {
+		t.Fatalf("FirstVal: %q", v)
+	}
+	if v1, v2 := a.TwoVals(t); v1 != "x" || v2 != "y" {
+		t.Fatalf("TwoVals: %q %q", v1, v2)
+	}
+	if v := (CmdArg{Key: "b", Vals: []string{"z"}}).SingleVal(t); v != "z" {
+		t.Fatalf("SingleVal: %q", v)
 	}
 }

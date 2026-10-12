@@ -256,8 +256,6 @@ func TestAnnotations(t *testing.T) {
 			t.Skip("skip", 1)
 		case "skipf":
 			t.Skipf("skipf %d", 1)
-		case "td-logf":
-			d.Logf("td-logf %d", 1)
 		case "td-fatalf":
 			d.Fatalf("td-fatalf %d", 1)
 		case "scan":
@@ -270,7 +268,7 @@ func TestAnnotations(t *testing.T) {
 			t.Cleanup(func() { t.Logf("cleanup from %s", pos) })
 		case "td-cleanup":
 			// The TestData remains valid after the directive.
-			t.Cleanup(func() { d.Logf("td cleanup from %s", d.Pos) })
+			t.Cleanup(func() { d.T.Logf("td cleanup from %s", d.Pos) })
 		case "return-x":
 			return "x"
 		case "nested":
@@ -318,7 +316,6 @@ func TestAnnotations(t *testing.T) {
 		{cmds: "fatalf", expected: []string{"<string>:1: fatalf 1"}},
 		{cmds: "skip", expected: []string{"<string>:1: skip 1"}},
 		{cmds: "skipf", expected: []string{"<string>:1: skipf 1"}},
-		{cmds: "td-logf", expected: []string{"<string>:1: td-logf 1"}},
 		{cmds: "td-fatalf", expected: []string{"<string>:1: td-fatalf 1"}},
 		{cmds: "scan", expected: []string{"<string>:1: missing argument: x"}},
 		{
@@ -451,7 +448,6 @@ func TestTOutput(t *testing.T) {
 		},
 		// The position is not added again if the message already starts with it.
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
-		{"td-logf", func(t *T, d *TestData) { d.Logf("td-logf %d", 1) }, "td-logf 1"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
 		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanArgs("x", &x) }, "missing argument: x"},
 	}

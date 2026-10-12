@@ -18,7 +18,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"iter"
 	"os"
 	"path/filepath"
@@ -479,7 +478,6 @@ func runDirective[U testing.TB](
 	} else if Verbose() {
 		raw.Logf("\n%s:\n%s  ----\n%s", orig.Pos, indentLines(orig.origString()), indentLines(actual))
 	}
-	return
 }
 
 // Walk goes through all the files in a subdirectory, creating subtests to match
@@ -521,7 +519,7 @@ func Walk[U testing.TB](t U, path string, f func(t U, path string)) {
 		f(t, path)
 		return
 	}
-	files, err := ioutil.ReadDir(path)
+	files, err := os.ReadDir(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +578,7 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Logf, Fatalf or
+	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Fatalf or
 	// the ScanArg functions.
 	T testing.TB
 
@@ -717,7 +715,7 @@ func (td *TestData) Arg(key string) (arg CmdArg, ok bool) {
 // MaybeScanArgs behaves identically to ScanArgs, except that if the arg does
 // not exist it leaves the destinations unmodified and returns false. In all
 // other cases it returns true.
-func (td *TestData) MaybeScanArgs(key string, dests ...interface{}) bool {
+func (td *TestData) MaybeScanArgs(key string, dests ...any) bool {
 	t := td.tb()
 	t.Helper()
 	if arg, ok := td.Arg(key); ok {
@@ -756,7 +754,7 @@ func (td *TestData) MaybeScanArgs(key string, dests ...interface{}) bool {
 // scanned into a bool, as true.
 //
 // See also ScanArg, ScanArgOr and MaybeScanArg.
-func (td *TestData) ScanArgs(key string, dests ...interface{}) {
+func (td *TestData) ScanArgs(key string, dests ...any) {
 	t := td.tb()
 	t.Helper()
 	arg, ok := td.Arg(key)
@@ -832,7 +830,7 @@ func (td *TestData) RetryFor(d time.Duration, f func() string) string {
 		}
 		if numOk == numStable || i == numAttempts {
 			if i >= numStable {
-				td.Logf("retried for %s (%d times)", time.Duration(i-numStable+1)*d/numAttempts, i-numStable+1)
+				td.tb().Logf("retried for %s (%d times)", time.Duration(i-numStable+1)*d/numAttempts, i-numStable+1)
 			}
 			return s
 		}
@@ -869,49 +867,42 @@ func (arg CmdArg) String() string {
 // FirstVal asserts that arg has at least one value and returns the first one.
 func (arg CmdArg) FirstVal(t testing.TB) string {
 	t.Helper()
-	arg.ExpectNumValsGE(t, 1)
+	if len(arg.Vals) == 0 {
+		t.Fatalf("argument %q requires at least 1 value, has 0", arg.Key)
+	}
 	return arg.Vals[0]
 }
 
 // SingleVal asserts that arg has exactly one value and returns it.
 func (arg CmdArg) SingleVal(t testing.TB) string {
 	t.Helper()
-	arg.ExpectNumVals(t, 1)
+	arg.expectNumVals(t, 1)
 	return arg.Vals[0]
 }
 
 // TwoVals asserts that arg has exactly two values and returns them.
 func (arg CmdArg) TwoVals(t testing.TB) (string, string) {
 	t.Helper()
-	arg.ExpectNumVals(t, 2)
+	arg.expectNumVals(t, 2)
 	return arg.Vals[0], arg.Vals[1]
 }
 
-// ExpectNumVals asserts that arg has exactly num values.
-func (arg CmdArg) ExpectNumVals(t testing.TB, num int) {
+func (arg CmdArg) expectNumVals(t testing.TB, num int) {
 	t.Helper()
 	if len(arg.Vals) != num {
 		t.Fatalf("argument %q requires %d values, has %d", arg.Key, num, len(arg.Vals))
 	}
 }
 
-// ExpectNumValsGE asserts that arg has at least minNum values.
-func (arg CmdArg) ExpectNumValsGE(t testing.TB, minNum int) {
-	t.Helper()
-	if len(arg.Vals) < minNum {
-		t.Fatalf("argument %q requires at least %d values, has %d", arg.Key, minNum, len(arg.Vals))
-	}
-}
-
 // Scan attempts to parse the value at index i into the dest.
-func (arg CmdArg) Scan(t testing.TB, i int, dest interface{}) {
+func (arg CmdArg) Scan(t testing.TB, i int, dest any) {
 	t.Helper()
 	if err := arg.scanScalarErr(i, dest); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func (arg CmdArg) scan(t testing.TB, dests ...interface{}) {
+func (arg CmdArg) scan(t testing.TB, dests ...any) {
 	t.Helper()
 	// If only one destination is provided, use scanAllErr which supports
 	// scanning multiple values into a slice destination type.
@@ -941,7 +932,7 @@ func (arg CmdArg) scan(t testing.TB, dests ...interface{}) {
 // scanAllErr scans the argument into dest, which is a pointer to either a
 // slice (which receives all the values) or a scalar (which receives the single
 // value; a bool also accepts no values, as true).
-func (arg CmdArg) scanAllErr(dest interface{}) error {
+func (arg CmdArg) scanAllErr(dest any) error {
 	rv := reflect.ValueOf(dest)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return fmt.Errorf("destination must be a non-nil pointer, got %T", dest)
@@ -974,7 +965,7 @@ func (arg CmdArg) scanAllErr(dest interface{}) error {
 }
 
 // scanScalarErr is like Scan but returns an error rather than taking a testing.T to fatal.
-func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
+func (arg CmdArg) scanScalarErr(i int, dest any) error {
 	if i < 0 || i >= len(arg.Vals) {
 		return fmt.Errorf("cannot scan index %d of key %s", i, arg.Key)
 	}
@@ -998,17 +989,9 @@ func (arg CmdArg) scanScalarErr(i int, dest interface{}) error {
 	return parseArgVal(val, rv.Elem())
 }
 
-// Logf is a shorthand for td.T.Logf, which adds file position information, so
-// that it's easy to locate the source of the log.
-func (td TestData) Logf(format string, args ...interface{}) {
-	t := td.tb()
-	t.Helper()
-	t.Logf(format, args...)
-}
-
 // Fatalf is a shorthand for td.T.Fatalf, which adds file position information,
 // so that it's easy to locate the source of the error.
-func (td TestData) Fatalf(format string, args ...interface{}) {
+func (td *TestData) Fatalf(format string, args ...any) {
 	t := td.tb()
 	t.Helper()
 	t.Fatalf(format, args...)

@@ -188,7 +188,7 @@ func (r *testDataReader) readExpected(t testing.TB) {
 }
 
 // fatalf fails the test with a message annotated with the current position.
-func (r *testDataReader) fatalf(t testing.TB, format string, args ...interface{}) {
+func (r *testDataReader) fatalf(t testing.TB, format string, args ...any) {
 	t = innermost(t)
 	t.Helper()
 	t.Fatalf("%s: %s", r.data.Pos, fmt.Sprintf(format, args...))
