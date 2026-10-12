@@ -25,7 +25,8 @@ import (
 // a *testing.B; see T and B) and is passed to the RunTest and
 // RunTestFromString callbacks. Error, Errorf, Fatal, Fatalf, Skip, Skipf, Log
 // and Logf prefix the message with the position (file:line) of the directive
-// that is currently running.
+// that is currently running (or of the current input line, see
+// TestData.InputLines).
 //
 // The position is that of the directive running at the time of the call, not
 // the directive for which the wrapper was passed to the callback. This means
@@ -197,14 +198,30 @@ func (p *directivePos) set(pos string) {
 	p.p.Store(&pos)
 }
 
+// push sets the position, and returns a function that restores the previous
+// position, unless the position was changed in the meantime (e.g. because the
+// next directive started).
+func (p *directivePos) push(pos string) (restore func()) {
+	np := &pos
+	old := p.p.Swap(np)
+	return func() { p.p.CompareAndSwap(np, old) }
+}
+
+func (p *directivePos) get() string {
+	if pos := p.p.Load(); pos != nil {
+		return *pos
+	}
+	return ""
+}
+
 // prefix prepends the current position (if any) to the given message. A nil
 // directivePos (see Wrap) has no position.
 func (p *directivePos) prefix(msg string) string {
 	if p == nil {
 		return msg
 	}
-	if pos := p.p.Load(); pos != nil && *pos != "" {
-		return *pos + ": " + msg
+	if pos := p.get(); pos != "" {
+		return pos + ": " + msg
 	}
 	return msg
 }

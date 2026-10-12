@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"iter"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -352,16 +353,19 @@ func runDirective[U testing.TB](
 	// unchanged) if the callback retains it (e.g. in a t.Cleanup function).
 	d := new(TestData)
 	*d = r.data
+	// The framework messages use a copy of the directive, which is not affected
+	// by changes the callback makes to d.
+	orig := r.data
 	actual := func() string {
 		fReturned := false
 		defer func() {
 			if r := recover(); r != nil {
-				raw.Logf("\npanic during %s:\n%s\n", d.Pos, d.Input)
+				raw.Logf("\npanic during %s:\n%s\n", orig.Pos, orig.Input)
 				panic(r)
 			} else if !fReturned {
 				// t.Fatal calls runtime.Goexit() which runs the defers but there is no
 				// panic to recover.
-				raw.Logf("\nfatal during %s:\n%s\n", d.Pos, d.Input)
+				raw.Logf("\nfatal during %s:\n%s\n", orig.Pos, orig.Input)
 			}
 		}()
 
@@ -375,7 +379,7 @@ func runDirective[U testing.TB](
 				case <-done:
 					return
 				case <-time.After(10 * time.Second):
-					raw.Logf("%s: still running after %s\n", d.Pos, time.Since(startTime))
+					raw.Logf("%s: still running after %s\n", orig.Pos, time.Since(startTime))
 				}
 			}
 		}()
@@ -385,9 +389,10 @@ func runDirective[U testing.TB](
 			done <- struct{}{}
 		}()
 
-		r.pos.set(d.Pos)
+		r.pos.set(orig.Pos.String())
 		w := newWrapper(t, &r.pos)
 		d.T = w
+		d.curPos = &r.pos
 		actual := f(w, d)
 		fReturned = true
 		if actual != "" && !strings.HasSuffix(actual, "\n") {
@@ -421,8 +426,8 @@ func runDirective[U testing.TB](
 			// Here actual already ends in \n so emit adds a blank line.
 			r.emit(actual)
 		}
-	} else if d.Expected != actual {
-		expectedLines := difflib.SplitLines(d.Expected)
+	} else if orig.Expected != actual {
+		expectedLines := difflib.SplitLines(orig.Expected)
 		actualLines := difflib.SplitLines(actual)
 		if len(expectedLines) > 5 {
 			// Print a unified diff if there is a lot of output to compare.
@@ -432,14 +437,14 @@ func runDirective[U testing.TB](
 				B:       actualLines,
 			})
 			if err == nil {
-				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(d.Pos), indentLines(d.origString()), indentLines(diff))
+				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(orig.Pos.String()), indentLines(orig.origString()), indentLines(diff))
 				return
 			}
 			raw.Logf("Failed to produce diff %v", err)
 		}
-		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", d.Pos, indentLines(d.origString()), indentLines(d.Expected), indentLines(actual))
+		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", orig.Pos, indentLines(orig.origString()), indentLines(orig.Expected), indentLines(actual))
 	} else if Verbose() {
-		raw.Logf("\n%s:\n%s  ----\n%s", d.Pos, indentLines(d.origString()), indentLines(actual))
+		raw.Logf("\n%s:\n%s  ----\n%s", orig.Pos, indentLines(orig.origString()), indentLines(actual))
 	}
 	return
 }
@@ -511,9 +516,10 @@ var tempFileRe = regexp.MustCompile(`(^\..*)|(.*~$)|(^#.*#$)`)
 // TestData contains information about one data-driven test case that was
 // parsed from the test file.
 type TestData struct {
-	// Pos is a file:line prefix for the input test file, suitable for
-	// inclusion in logs and error messages.
-	Pos string
+	// Pos is the position of the directive in the test file. Messages reported
+	// through T are annotated with it (except in InputLines loops); changing it
+	// has no effect on them.
+	Pos Pos
 
 	// Cmd is the first string on the directive line (up to the first whitespace).
 	Cmd string
@@ -538,7 +544,7 @@ type TestData struct {
 	// T is the testing.TB for the directive; it is used by the TestData methods
 	// to report errors. When running via RunTest or RunTestFromString, it is the
 	// wrapper passed to the callback, which annotates errors, skips and logs with
-	// the position of the directive.
+	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
 	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Logf or
@@ -549,6 +555,76 @@ type TestData struct {
 	// joined). Unlike FullCmd, it is not affected by changes to CmdArgs; it is
 	// used when printing errors.
 	directive string
+
+	// inputPos is the position of the first line of Input in the test file (zero
+	// if the TestData was not read from a file, or Input is empty).
+	inputPos Pos
+
+	// curPos is the position used by the wrapper to annotate messages (nil if
+	// the TestData was not created by RunTest or RunTestFromString).
+	curPos *directivePos
+}
+
+// Pos is a position in a test file.
+type Pos struct {
+	// File is the path of the test file (as passed to RunTest), or "<string>"
+	// for RunTestFromString.
+	File string
+	// Line is the 1-based line number.
+	Line int
+}
+
+// String returns "file:line" (or "" for the zero Pos).
+func (p Pos) String() string {
+	if p == (Pos{}) {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", p.File, p.Line)
+}
+
+// InputLines returns an iterator over the lines of Input, along with their
+// positions in the test file. While the body of the loop runs, messages
+// reported through T (including by TestData methods like ScanArgs or Fatalf)
+// are annotated with the position of the current line, instead of that of the
+// directive. This is useful for directives whose input contains a sequence of
+// commands; for example:
+//
+//	for _, line := range td.InputLines() {
+//		cmd, args, err := datadriven.ParseLine(line)
+//		if err != nil {
+//			td.Fatalf("%v", err) // Reports the position of the line.
+//		}
+//		...
+//	}
+//
+// An empty Input has no lines. If the TestData was not read from a test file,
+// the positions are zero and messages are not affected. The annotations are
+// only reliable if the loop runs in the callback's goroutine.
+func (td *TestData) InputLines() iter.Seq2[Pos, string] {
+	return func(yield func(Pos, string) bool) {
+		if td.Input == "" {
+			return
+		}
+		for i, line := range strings.Split(td.Input, "\n") {
+			var pos Pos
+			if td.inputPos.Line != 0 {
+				pos = Pos{File: td.inputPos.File, Line: td.inputPos.Line + i}
+			}
+			if !td.withPos(pos, func() bool { return yield(pos, line) }) {
+				return
+			}
+		}
+	}
+}
+
+// withPos runs f while messages reported through T are annotated with pos.
+func (td *TestData) withPos(pos Pos, f func() bool) bool {
+	if td.curPos == nil || pos == (Pos{}) {
+		return f()
+	}
+	// The position is restored even if f panics or calls runtime.Goexit.
+	defer td.curPos.push(pos.String())()
+	return f()
 }
 
 // FullCmd renders the command and the arguments (which reflect any changes to

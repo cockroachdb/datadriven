@@ -66,7 +66,7 @@ cmd
 ok
 `, func(b *B, d *TestData) string {
 			b.TB.ReportMetric(1, "things")
-			ran = append(ran, d.Pos)
+			ran = append(ran, d.Pos.String())
 			return "ok"
 		})
 		// Walk creates sub-benchmarks for the files in a directory; it is
@@ -203,7 +203,7 @@ walk-td
 				if w.TB == t.TB {
 					t.Errorf("not in a subtest")
 				}
-				if msg := w.pos.prefix("x"); msg != d.Pos+": x" {
+				if msg := w.pos.prefix("x"); msg != d.Pos.String()+": x" {
 					t.Errorf("unexpected position: %s", msg)
 				}
 				paths = append(paths, path)

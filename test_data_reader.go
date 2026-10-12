@@ -65,7 +65,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 
 		// Update Pos early so that a late error message has an updated
 		// position.
-		pos := fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
+		pos := Pos{File: r.sourceName, Line: r.scanner.line}
 		r.data.Pos = pos
 
 		line = strings.TrimSpace(line)
@@ -108,6 +108,10 @@ func (r *testDataReader) Next(t testing.TB) bool {
 			if line == "----" {
 				separator = true
 				break
+			}
+			if r.data.inputPos.Line == 0 && strings.TrimSpace(line) != "" {
+				// This is the first line of Input (which is trimmed below).
+				r.data.inputPos = Pos{File: r.sourceName, Line: r.scanner.line}
 			}
 
 			r.emit(line)
