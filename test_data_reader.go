@@ -154,7 +154,8 @@ func (r *testDataReader) readExpected(t testing.TB) {
 						// Read the following blank line (if we don't do this, we will emit
 						// an extra blank line when rewriting).
 						if r.scanner.Scan() && r.scanner.Text() != "" {
-							t.Fatal("non-blank line after end of double ---- separator section")
+							t.Fatalf("%s: non-blank line after the end of a double ---- separator section",
+								Pos{File: r.sourceName, Line: r.scanner.line})
 						}
 						break
 					}

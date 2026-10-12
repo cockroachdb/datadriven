@@ -93,6 +93,14 @@ func TestScanErrors(t *testing.T) {
 			"cmd b=yes", func(d *TestData) { ScanArg[bool](d, "b") },
 			`<string>:1: argument "b": strconv.ParseBool: parsing "yes": invalid syntax`,
 		},
+		{
+			"cmd a=(1,2)", func(d *TestData) { var x int; d.CmdArgs[0].Scan(d.T, 2, &x) },
+			`<string>:1: argument "a": value 2: index out of range (2 values)`,
+		},
+		{
+			"cmd a=(1,x)", func(d *TestData) { var x int; d.CmdArgs[0].Scan(d.T, 1, &x) },
+			`<string>:1: argument "a": value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
+		},
 		{"cmd a", func(d *TestData) { d.CmdArgs[0].FirstVal(d.T) }, `<string>:1: argument "a" requires at least 1 value, has 0`},
 		{"cmd a=(1,2)", func(d *TestData) { d.CmdArgs[0].SingleVal(d.T) }, `<string>:1: argument "a" requires 1 values, has 2`},
 		{"cmd a=(1,2,3)", func(d *TestData) { d.CmdArgs[0].TwoVals(d.T) }, `<string>:1: argument "a" requires 2 values, has 3`},

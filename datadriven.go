@@ -322,7 +322,7 @@ func runSubTest[U testing.TB](
 	if seenSubTestEnd && len(r.data.CmdArgs) == 2 && r.data.CmdArgs[1].Key != subTestName {
 		// If a subtest name was provided after "subtest end", ensure that it matches.
 		r.fatalf(t,
-			"mismatched subtest end directive: expected %q, got %q", r.data.CmdArgs[1].Key, subTestName)
+			"mismatched subtest end directive: expected %q, got %q", subTestName, r.data.CmdArgs[1].Key)
 	}
 
 	if !seenSubTestEnd && !t.Failed() {
@@ -394,7 +394,7 @@ func runDirective[U testing.TB](
 			if r := recover(); r != nil {
 				raw.Logf("\npanic during %s:\n%s\n", orig.Pos, orig.Input)
 				panic(r)
-			} else if !fReturned {
+			} else if !fReturned && !raw.Skipped() {
 				// t.Fatal calls runtime.Goexit() which runs the defers but there is no
 				// panic to recover.
 				raw.Logf("\nfatal during %s:\n%s\n", orig.Pos, orig.Input)
@@ -469,15 +469,45 @@ func runDirective[U testing.TB](
 				B:       actualLines,
 			})
 			if err == nil {
-				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(orig.Pos.String()), indentLines(orig.origString()), indentLines(diff))
+				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s%s", orig.Pos, indentLines(orig.origString()), indentLines(diff), whitespaceNote(orig.Expected, actual))
 				return
 			}
 			raw.Logf("Failed to produce diff %v", err)
 		}
-		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", orig.Pos, indentLines(orig.origString()), indentLines(orig.Expected), indentLines(actual))
+		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s%s", orig.Pos, indentLines(orig.origString()), indentLines(orig.Expected), indentLines(actual), whitespaceNote(orig.Expected, actual))
 	} else if Verbose() {
 		raw.Logf("\n%s:\n%s  ----\n%s", orig.Pos, indentLines(orig.origString()), indentLines(actual))
 	}
+}
+
+// whitespaceNote returns a note to append to a mismatch message if the expected
+// and actual outputs differ only in trailing whitespace (which is not visible in
+// the message), or "" otherwise.
+func whitespaceNote(expected, actual string) string {
+	e := strings.Split(expected, "\n")
+	a := strings.Split(actual, "\n")
+	if len(e) != len(a) {
+		return ""
+	}
+	first := -1
+	for i := range e {
+		if e[i] == a[i] {
+			continue
+		}
+		if strings.TrimRight(e[i], " \t\r") != strings.TrimRight(a[i], " \t\r") {
+			return ""
+		}
+		if first == -1 {
+			first = i
+		}
+	}
+	if first == -1 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"\nthe outputs differ only in trailing whitespace; first difference in line %d: expected %q, found %q",
+		first+1, e[first], a[first],
+	)
 }
 
 // Walk goes through all the files in a subdirectory, creating subtests to match
@@ -898,7 +928,7 @@ func (arg CmdArg) expectNumVals(t testing.TB, num int) {
 func (arg CmdArg) Scan(t testing.TB, i int, dest any) {
 	t.Helper()
 	if err := arg.scanScalarErr(i, dest); err != nil {
-		t.Fatal(err)
+		t.Fatalf("argument %q: value %d: %v", arg.Key, i, err)
 	}
 }
 
@@ -967,7 +997,7 @@ func (arg CmdArg) scanAllErr(dest any) error {
 // scanScalarErr is like Scan but returns an error rather than taking a testing.T to fatal.
 func (arg CmdArg) scanScalarErr(i int, dest any) error {
 	if i < 0 || i >= len(arg.Vals) {
-		return fmt.Errorf("cannot scan index %d of key %s", i, arg.Key)
+		return fmt.Errorf("index out of range (%d values)", len(arg.Vals))
 	}
 	val := arg.Vals[i]
 

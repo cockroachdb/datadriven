@@ -111,7 +111,7 @@ last
 		{
 			name:        "double-separator",
 			input:       "cmd\n----\n----\nfoo\n----\n----\nbar\n",
-			expectedErr: "non-blank line after end of double ---- separator section",
+			expectedErr: "<path>:7: non-blank line after the end of a double ---- separator section",
 		},
 	}
 	for _, tc := range testCases {
