@@ -324,7 +324,7 @@ func TestAnnotations(t *testing.T) {
 		{
 			cmds: "scan x=foo",
 			expected: []string{
-				`<string>:1: x: failed to scan argument 0: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+				`<string>:1: argument "x": parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
 			},
 		},
 		{
@@ -432,6 +432,23 @@ func TestTOutput(t *testing.T) {
 		{"skipf-nl", func(t *T, d *TestData) { t.Skipf("skipf-nl %d\n", 1) }, "skipf-nl 1"},
 		{"tb-helper", func(t *T, d *TestData) { tbHelperErrorf(t, "tb-helper %d", 1) }, "tb-helper 1"},
 		{"t-helper", func(t *T, d *TestData) { tHelperErrorf(t, "t-helper %d", 1) }, "t-helper 1"},
+		{"scan-arg", func(t *T, d *TestData) { ScanArg[int](d, "scan-arg") }, "missing argument: scan-arg"},
+		{
+			"scan-arg-or",
+			func(t *T, d *TestData) {
+				d.CmdArgs = []CmdArg{{Key: "or", Vals: []string{"foo"}}}
+				ScanArgOr(d, "or", 1)
+			},
+			`argument "or": parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+		},
+		{
+			"maybe-scan-arg",
+			func(t *T, d *TestData) {
+				d.CmdArgs = []CmdArg{{Key: "maybe", Vals: []string{"foo"}}}
+				MaybeScanArg[int](d, "maybe")
+			},
+			`argument "maybe": parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+		},
 		// The position is not added again if the message already starts with it.
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-logf", func(t *T, d *TestData) { d.Logf("td-logf %d", 1) }, "td-logf 1"},

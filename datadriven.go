@@ -580,8 +580,8 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Logf or
-	// Fatalf.
+	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Logf, Fatalf or
+	// the ScanArg functions.
 	T testing.TB
 
 	// directive is the original directive line (with any continuation lines
@@ -734,15 +734,28 @@ func (td *TestData) MaybeScanArgs(key string, dests ...interface{}) bool {
 // exists multiple times, the first occurrence is parsed. For example, for a
 // TestData originating from
 //
-//	cmd arg1=50 arg2=yoruba arg3=(50, 50, 50)
+//	cmd arg1=50 arg2=yoruba arg3=(50, 50, 50) arg4
 //
 // the following would be valid:
 //
 //	var i1, i2, i3, i4 int
 //	var s string
+//	var l []int
+//	var b bool
 //	td.ScanArgs("arg1", &i1)
 //	td.ScanArgs("arg2", &s)
 //	td.ScanArgs("arg3", &i2, &i3, &i4)
+//	td.ScanArgs("arg3", &l)
+//	td.ScanArgs("arg4", &b) // true
+//
+// The destinations must be pointers to one of: string, bool, integer and
+// floating point types, named types with one of these as the underlying type,
+// time.Duration (but not named types defined from it, which are parsed as
+// integers), or slices of these (which receive all the values). Integers are
+// parsed in base 10. An argument without values (e.g. arg4 above) can be
+// scanned into a bool, as true.
+//
+// See also ScanArg, ScanArgOr and MaybeScanArg.
 func (td *TestData) ScanArgs(key string, dests ...interface{}) {
 	t := td.tb()
 	t.Helper()
@@ -904,7 +917,7 @@ func (arg CmdArg) scan(t testing.TB, dests ...interface{}) {
 	// scanning multiple values into a slice destination type.
 	if len(dests) == 1 {
 		if err := arg.scanAllErr(dests[0]); err != nil {
-			t.Fatalf("%s: failed to scan argument %d: %v", arg.Key, 0, err)
+			t.Fatalf("argument %q: %v", arg.Key, err)
 		}
 		return
 	}
@@ -915,39 +928,49 @@ func (arg CmdArg) scan(t testing.TB, dests ...interface{}) {
 	//   td.ScanArgs("arg3", &i2, &i3, &i4)
 	//
 	if len(dests) != len(arg.Vals) {
-		t.Fatalf("%s: got %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
+		t.Fatalf("argument %q: %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
 	}
 
 	for i := range dests {
 		if err := arg.scanScalarErr(i, dests[i]); err != nil {
-			t.Fatalf("%s: failed to scan argument %d: %v", arg.Key, i, err)
+			t.Fatalf("argument %q: value %d: %v", arg.Key, i, err)
 		}
 	}
 }
 
+// scanAllErr scans the argument into dest, which is a pointer to either a
+// slice (which receives all the values) or a scalar (which receives the single
+// value; a bool also accepts no values, as true).
 func (arg CmdArg) scanAllErr(dest interface{}) error {
 	rv := reflect.ValueOf(dest)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
-		return fmt.Errorf("out must be a non-nil pointer to a slice")
+		return fmt.Errorf("destination must be a non-nil pointer, got %T", dest)
 	}
 
 	if sliceV := rv.Elem(); sliceV.Kind() == reflect.Slice {
 		slice := reflect.MakeSlice(sliceV.Type(), len(arg.Vals), len(arg.Vals))
 		for i := range arg.Vals {
 			if err := arg.scanScalarErr(i, slice.Index(i).Addr().Interface()); err != nil {
-				return err
+				return fmt.Errorf("value %d: %w", i, err)
 			}
 		}
 		sliceV.Set(slice)
 		return nil
 	}
 
-	// If there's a single value and `dest` is a supported scalar type, we might
-	// still be able to scan it.
-	if len(arg.Vals) == 1 {
+	switch len(arg.Vals) {
+	case 0:
+		if rv.Elem().Kind() == reflect.Bool {
+			// An argument without values (e.g. "cmd verbose") is a true bool.
+			rv.Elem().SetBool(true)
+			return nil
+		}
+		return fmt.Errorf("no value")
+	case 1:
 		return arg.scanScalarErr(0, dest)
+	default:
+		return fmt.Errorf("%d values; scan into a slice, or pass %d destinations", len(arg.Vals), len(arg.Vals))
 	}
-	return fmt.Errorf("unsupported type %T for %q (might be easy to add it)", dest, arg.Key)
 }
 
 // scanScalarErr is like Scan but returns an error rather than taking a testing.T to fatal.
@@ -1041,7 +1064,7 @@ func indentLines(str string) string {
 // uint*, float*, string, bool, or a named type with one of those underlying
 // kinds.
 //
-// Uses base 0 for ints/uints (supports 0x, 0o, 0b).
+// Integers are parsed in base 10.
 func parseArgVal(s string, dest reflect.Value) error {
 	t := dest.Type()
 
@@ -1079,7 +1102,7 @@ func parseArgVal(s string, dest reflect.Value) error {
 		dest.SetFloat(f)
 
 	default:
-		return fmt.Errorf("dest must point to a numeric type; got %s", t)
+		return fmt.Errorf("unsupported destination type %s", t)
 	}
 
 	return nil
