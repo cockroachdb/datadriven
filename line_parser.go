@@ -24,8 +24,8 @@ import (
 // and CmdArgs.
 //
 // An input directive line is a command optionally followed by a list of
-// arguments. Arguments may or may not have values and are specified with one of
-// the forms:
+// arguments, separated by spaces. Arguments may or may not have values and are
+// specified with one of the forms:
 //   - <argname>                            # No values.
 //   - <argname>=<value>                    # Single value.
 //   - <argname>=(<value1>, <value2>, ...)  # Multiple values.

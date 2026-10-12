@@ -99,63 +99,26 @@ func init() {
 	}
 }
 
-// RunTest invokes a data-driven test. The test cases are contained in a
-// separate test file and are dynamically loaded, parsed, and executed by this
-// testing framework. By convention, test files are typically located in a
-// sub-directory called "testdata". Each test file has the following format:
-//
-//	<command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
-//	<input to the command>
-//	----
-//	<expected results>
-//
-// The command input can contain blank lines. However, by default, the expected
-// results cannot contain blank lines. This alternate syntax allows the use of
-// blank lines:
-//
-//	<command>[,<command>...] [arg | arg=val | arg=(val1, val2, ...)]...
-//	<input to the command>
-//	----
-//	----
-//	<expected results>
-//
-//	<more expected results>
-//	----
-//	----
-//
-// To execute data-driven tests, pass the path of the test file as well as a
-// function which can interpret and execute whatever commands are present in
-// the test file. The framework invokes the function, passing it information
-// about the test case in a TestData struct.
-//
-// The function must returns the actual results of the case, which
-// RunTest() compares with the expected results. If the two are not
-// equal, the test is marked to fail.
+// RunTest runs the data-driven test in the given file (see the package
+// documentation for the file format). The function is called for each
+// directive in the file and returns the actual output, which RunTest compares
+// with the expected output (or, with -rewrite, uses to rewrite the file).
 //
 // RunTest works over any testing.TB, typically a *testing.T or a *testing.B.
 // The function is passed a *TBWrapper which wraps it (a *T for a *testing.T, a
 // *B for a *testing.B) and annotates errors, skips and logs with the position
 // of the current directive in the test file; the same wrapper is available as
-// td.T.
+// td.T. A failure (including t.Error) stops the processing of the file after
+// the current directive.
 //
-// "subtest" directives are not supported when running over a *testing.B
-// (testing.B.Run runs the function of a sub-benchmark multiple times, but the
-// directives can only be read once).
+// RunTest runs each "subtest" section in a subtest, so the function must use
+// the wrapper it is passed (and not the parent testing.TB) to fail or skip the
+// test. Subtests are not supported over a *testing.B (testing.B.Run runs the
+// function of a sub-benchmark multiple times, but the directives can only be
+// read once).
 //
-// Note that RunTest() creates a sub-instance of testing.T for each
-// "subtest" directive in the input file. It is thus unsafe/invalid to call
-// e.g. Fatal() or Skip() on the parent testing.T from inside the
-// callback function. Use the provided wrapper instead.
-//
-// It is possible for a test to test for an "expected error" as follows:
-//   - run the code to test
-//   - if an error occurs, report the detail of the error as actual
-//     output.
-//   - place the expected error details in the expected results
-//     in the input file.
-//
-// It is also possible for a test to report an _unexpected_ test
-// error by calling t.Error().
+// An expected error can be tested by returning the error as the output; an
+// unexpected error should fail the test (e.g. with t.Fatal).
 func RunTest[U testing.TB](t U, path string, f func(t *TBWrapper[U], td *TestData) string) {
 	t.Helper()
 
@@ -368,11 +331,6 @@ func isSubTestEnd(t testing.TB, r *testDataReader) bool {
 }
 
 // runDirective runs just one directive in the input.
-//
-// The stopNow and subTestSkipped booleans are modified by-reference
-// instead of returned because the testing module implements t.Skip
-// and t.Fatal using panics, and we're not guaranteed to get back to
-// the caller via a return in those cases.
 func runDirective[U testing.TB](
 	t U, r *testDataReader, f func(t *TBWrapper[U], td *TestData) string,
 ) {
@@ -582,14 +540,15 @@ type TestData struct {
 	// has no effect on them.
 	Pos Pos
 
-	// Cmd is the first string on the directive line (up to the first whitespace).
+	// Cmd is the first string on the directive line (up to the first space).
 	Cmd string
 
 	// CmdArgs contains the k/v arguments to the command. PopArg removes
 	// arguments from the front.
 	CmdArgs []CmdArg
 
-	// Input is the text between the first directive line and the ---- separator.
+	// Input is the text between the directive line and the ---- separator, with
+	// leading and trailing whitespace removed.
 	Input string
 
 	// Expected is the value below the ---- separator. In most cases,
@@ -599,7 +558,8 @@ type TestData struct {
 	// with "return d.Expected" to signal that nothing has changed.
 	Expected string
 
-	// Rewrite is set if the test is being run with the -rewrite flag.
+	// Rewrite is set if the test is being run with the -rewrite flag (see
+	// Rewrite).
 	Rewrite bool
 
 	// T is the testing.TB for the directive; it is used by the TestData methods
@@ -881,6 +841,9 @@ type CmdArg struct {
 	Vals []string
 }
 
+// String renders the argument in the directive line syntax. Note that values
+// are not quoted, so a single value that contains a space or a comma (e.g. from
+// "x=(a b)") is not rendered as it appears on the directive line.
 func (arg CmdArg) String() string {
 	switch len(arg.Vals) {
 	case 0:
