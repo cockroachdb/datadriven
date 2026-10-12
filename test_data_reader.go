@@ -94,6 +94,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 
 		r.data.Cmd = cmd
 		r.data.CmdArgs = args
+		r.data.directive = line
 
 		if cmd == "subtest" {
 			// Subtest directives do not have an input and expected output.

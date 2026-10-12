@@ -432,14 +432,14 @@ func runDirective[U testing.TB](
 				B:       actualLines,
 			})
 			if err == nil {
-				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(d.Pos), indentLines(d.String()), indentLines(diff))
+				raw.Fatalf("\n%s:\n%soutput didn't match expected:\n%s", indentLines(d.Pos), indentLines(d.origString()), indentLines(diff))
 				return
 			}
 			raw.Logf("Failed to produce diff %v", err)
 		}
-		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", d.Pos, indentLines(d.String()), indentLines(d.Expected), indentLines(actual))
+		raw.Fatalf("\n%s:\n%s\nexpected:\n%s\nfound:\n%s", d.Pos, indentLines(d.origString()), indentLines(d.Expected), indentLines(actual))
 	} else if Verbose() {
-		raw.Logf("\n%s:\n%s  ----\n%s", d.Pos, indentLines(d.String()), indentLines(actual))
+		raw.Logf("\n%s:\n%s  ----\n%s", d.Pos, indentLines(d.origString()), indentLines(actual))
 	}
 	return
 }
@@ -542,6 +542,11 @@ type TestData struct {
 	// When a TestData is constructed manually, T must be set before using
 	// ScanArgs, MaybeScanArgs, Retry, RetryFor, Logf or Fatalf.
 	T testing.TB
+
+	// directive is the original directive line (with any continuation lines
+	// joined). Unlike FullCmd, it is not affected by changes to CmdArgs; it is
+	// used when printing errors.
+	directive string
 }
 
 // FullCmd renders the command and the arguments.
@@ -556,10 +561,28 @@ func (td *TestData) FullCmd() string {
 
 // String renders the entire testcase. The string ends in a newline.
 func (td *TestData) String() string {
-	if td.Input == "" {
-		return td.FullCmd() + "\n"
+	return td.render(td.FullCmd())
+}
+
+// directiveLine returns the original directive line, or FullCmd if it is not
+// set (e.g. for a TestData constructed manually).
+func (td *TestData) directiveLine() string {
+	if td.directive != "" {
+		return td.directive
 	}
-	return fmt.Sprintf("%s\n%s\n", td.FullCmd(), td.Input)
+	return td.FullCmd()
+}
+
+// origString is like String, but uses the original directive line.
+func (td *TestData) origString() string {
+	return td.render(td.directiveLine())
+}
+
+func (td *TestData) render(directive string) string {
+	if td.Input == "" {
+		return directive + "\n"
+	}
+	return fmt.Sprintf("%s\n%s\n", directive, td.Input)
 }
 
 // HasArg checks whether the CmdArgs array contains an entry for the given key.

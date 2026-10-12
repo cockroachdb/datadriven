@@ -389,7 +389,7 @@ ok
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				RunTestFromString(rec, input.String(), func(t *TBWrapper[*recorderTB], d *TestData) string {
+				runFromString(rec, input.String(), func(t *TBWrapper[*recorderTB], d *TestData) string {
 					return handler(t, d)
 				})
 			}()
@@ -478,11 +478,20 @@ func TestTOutput(t *testing.T) {
 	}
 }
 
+// runFromString is like RunTestFromString, but it always compares the outputs
+// (even with -rewrite); it is used by tests that check the framework's
+// messages.
+func runFromString[U testing.TB](t U, input string, f func(t *TBWrapper[U], td *TestData) string) {
+	t.Helper()
+	runTestInternal(t, "<string>", strings.NewReader(input), f, false /* rewrite */)
+}
+
 // recorderTB is a testing.TB which records messages instead of reporting them.
 // Messages logged by the framework itself (which start with a newline) are
-// ignored.
+// ignored, unless keepFramework is set.
 type recorderTB struct {
 	testing.TB
+	keepFramework bool
 
 	mu       sync.Mutex
 	msgs     []string
@@ -529,7 +538,7 @@ func (r *recorderTB) runCleanups() {
 }
 
 func (r *recorderTB) record(msg string) {
-	if strings.HasPrefix(msg, "\n") {
+	if strings.HasPrefix(msg, "\n") && !r.keepFramework {
 		return
 	}
 	r.mu.Lock()
