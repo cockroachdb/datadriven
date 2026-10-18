@@ -95,7 +95,7 @@ func TestInputLinesAnnotations(t *testing.T) {
 				}
 				t.Logf("after")
 			},
-			expected: []string{"<string>:3: line a", "<string>:4: line b x=1", "<string>:2: after"},
+			expected: []string{"<string>:3: line a", "<string>:4: line b -x=1", "<string>:2: after"},
 		},
 		{
 			name: "break",
@@ -140,21 +140,21 @@ func TestInputLinesAnnotations(t *testing.T) {
 			f: func(t *TBWrapper[*recorderTB], d *TestData) {
 				for _, line := range d.InputLines() {
 					var err error
-					if d.Cmd, d.CmdArgs, err = ParseLine(line); err != nil {
+					if d.Cmd, d.Flags, d.Args, err = ParseLine(line); err != nil {
 						d.Fatalf("%v", err)
 					}
 					var x int
-					d.ScanArgs("x", &x)
+					d.ScanFlagInto("x", &x)
 				}
 			},
-			expected: []string{"<string>:3: missing argument: x"},
+			expected: []string{"<string>:3: missing flag: -x"},
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recorderTB{TB: t}
 			runAndWait(func() {
-				runFromString(rec, "\ncmd\na\nb x=1\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+				runFromString(rec, "\ncmd\na\nb -x=1\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 					tc.f(t, d)
 					return ""
 				})

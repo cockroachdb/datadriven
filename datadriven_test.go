@@ -59,25 +59,51 @@ unknown command
 func TestParseLine(t *testing.T) {
 	RunTestFromString(t, `
 parse
-xx =
+xx -a=b -a=c
 ----
-here: cannot parse directive at column 4: xx =
+"xx" [-a=b -a=c] []
 
 parse
-xx a=b a=c
+xx -a=b x -b=c -c=(1,2,3) y
 ----
-"xx" [a=b a=c]
+"xx" [-a=b -b=c -c=(1, 2, 3)] [x y]
 
 parse
-xx a=b b=c c=(1,2,3)
+xx (
 ----
-"xx" [a=b b=c c=(1, 2, 3)]
+cannot parse directive at column 4 (unclosed '('): xx (
+
+parse
+xx (a)) b
+----
+cannot parse directive at column 7 (unmatched ')'): xx (a)) b
+
+parse
+-x
+----
+cannot parse directive at column 1 (expected a command): -x
+
+parse
+xx -f(x)=1
+----
+cannot parse directive at column 4 (invalid flag name "f(x)"): xx -f(x)=1
+
+parse
+-- x
+----
+cannot parse directive at column 1 (expected a command): -- x
+
+# Columns are in characters.
+parse
+é 🍌 (
+----
+cannot parse directive at column 5 (unclosed '('): é 🍌 (
 `, func(t *T, d *TestData) string {
-		cmd, args, err := ParseLine(d.Input)
+		cmd, flags, args, err := ParseLine(d.Input)
 		if err != nil {
-			return fmt.Errorf("here: %w", err).Error()
+			return err.Error()
 		}
-		return fmt.Sprintf("%q %+v", cmd, args)
+		return fmt.Sprintf("%q %v %v", cmd, flags, args)
 	})
 }
 
@@ -107,7 +133,7 @@ func TestSubTest(t *testing.T) {
 	RunTest(t, "testdata/subtest", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "hello":
-			return d.CmdArgs[0].Key + " was said"
+			return d.Args[0] + " was said"
 		case "skip":
 			// Verify that calling t.Skip() does not fail with an API error on
 			// testing.T.
@@ -148,7 +174,7 @@ func TestRetry(t *testing.T) {
 		switch d.Cmd {
 		case "inc":
 			n := 1
-			d.MaybeScanArgs("n", &n)
+			d.MaybeScanFlagInto("n", &n)
 			for i := 0; i < n; i++ {
 				go func() {
 					time.Sleep(time.Duration(rand.Intn(10)) * time.Microsecond)
@@ -172,9 +198,23 @@ func TestRetry(t *testing.T) {
 func TestDirective(t *testing.T) {
 	RunTest(t, "testdata/directive", func(t *T, d *TestData) string {
 		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "cmd: %s\n%d arguments\n", d.Cmd, len(d.CmdArgs))
-		for _, a := range d.CmdArgs {
-			fmt.Fprintf(&buf, "key=%#v vals=%#v\n", a.Key, a.Vals)
+		fmt.Fprintf(&buf, "cmd: %s\n", d.Cmd)
+		for _, f := range d.Flags {
+			fmt.Fprintf(&buf, "flag: name=%q vals=%#v\n", f.Name, f.Vals)
+			d.MarkFlagProcessed(f.Name)
+		}
+		for _, a := range d.Args {
+			fmt.Fprintf(&buf, "arg: %q\n", a)
+		}
+		// FullCmd renders the directive such that it is parsed the same way.
+		full := d.FullCmd()
+		fmt.Fprintf(&buf, "full: %s\n", full)
+		cmd, flags, args, err := ParseLine(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd != d.Cmd || !reflect.DeepEqual(flags, d.Flags) || !reflect.DeepEqual(args, d.Args) {
+			t.Fatalf("FullCmd() parsed as %q %v %v", cmd, flags, args)
 		}
 		return buf.String()
 	})
@@ -282,31 +322,31 @@ cmd
 "", "", ""
 `, func(t *T, d *TestData) string {
 		var x, y, z string
-		d.MaybeScanArgs("vals", &x, &y, &z)
+		d.MaybeScanFlagInto("vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
 	})
 }
 
-func TestScanArgsExpansion(t *testing.T) {
+func TestScanFlagExpansion(t *testing.T) {
 	RunTestFromString(t, `
-cmd vals=(foo, bar, bax)
+cmd -vals=(foo, bar, bax)
 ----
 "foo", "bar", "bax"
 `, func(t *T, d *TestData) string {
 		var x, y, z string
-		d.ScanArgs("vals", &x, &y, &z)
+		d.ScanFlagInto("vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
 	})
 }
 
-func TestScanArgsSingle(t *testing.T) {
+func TestScanFlagSingle(t *testing.T) {
 	checkScanEquivalence := func(d *TestData, dest1, dest2 any) {
-		d.ScanArgs("vals", dest1)
-		if _, ok := d.Arg("vals"); !ok {
-			d.T.Fatal("`vals` argument not found by TestData.Arg")
+		d.ScanFlagInto("vals", dest1)
+		if _, ok := d.Flag("vals"); !ok {
+			d.T.Fatal("`vals` flag not found by TestData.Flag")
 		}
-		if ok := d.MaybeScanArgs("vals", dest2); !ok {
-			d.T.Fatal("`vals` argument not found by TestData.MaybeScanArgs")
+		if ok := d.MaybeScanFlagInto("vals", dest2); !ok {
+			d.T.Fatal("`vals` flag not found by TestData.MaybeScanFlagInto")
 		}
 		if !reflect.DeepEqual(dest1, dest2) {
 			d.T.Fatalf("scanned values %#v and %#v are unequal", dest1, dest2)
@@ -314,39 +354,39 @@ func TestScanArgsSingle(t *testing.T) {
 	}
 
 	RunTestFromString(t, `
-[]string vals=(foo, bar, bax)
+[]string -vals=(foo, bar, bax)
 ----
 []string{"foo", "bar", "bax"}
 
-[]int vals=(1, 2, 3, 4)
+[]int -vals=(1, 2, 3, 4)
 ----
 []int{1, 2, 3, 4}
 
-[]uint64 vals=(1, 2, 3, 4)
+[]uint64 -vals=(1, 2, 3, 4)
 ----
 []uint64{0x1, 0x2, 0x3, 0x4}
 
-[]int64 vals=(10, 000016)
+[]int64 -vals=(10, 000016)
 ----
 []int64{10, 16}
 
-string vals=(foo)
+string -vals=(foo)
 ----
 "foo"
 
-bool vals=true
+bool -vals=true
 ----
 true
 
-float64 vals=1.1
+float64 -vals=1.1
 ----
 1.1
 
-[]float64 vals=(1.1, 2.2, 3.3, 4.4)
+[]float64 -vals=(1.1, 2.2, 3.3, 4.4)
 ----
 []float64{1.1, 2.2, 3.3, 4.4}
 
-time.Duration vals=10.0m
+time.Duration -vals=10.0m
 ----
 10m0s
 	`, func(t *T, d *TestData) string {
@@ -395,6 +435,7 @@ time.Duration vals=10.0m
 
 func TestString(t *testing.T) {
 	RunTest(t, "testdata/string", func(t *T, d *TestData) string {
+		d.MarkAllFlagsProcessed()
 		return d.String()
 	})
 }
@@ -418,7 +459,7 @@ func TestTestDataWithoutT(t *testing.T) {
 	}()
 	td := TestData{Cmd: "cmd"}
 	var x int
-	td.MaybeScanArgs("x", &x)
+	td.MaybeScanFlagInto("x", &x)
 }
 
 // END: TestData.T required

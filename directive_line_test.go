@@ -21,11 +21,11 @@ import (
 )
 
 // TestDirectiveLineInErrors verifies that framework messages show the original
-// directive line, even if the test modified CmdArgs.
+// directive line, even if the test modified Flags or Args.
 func TestDirectiveLineInErrors(t *testing.T) {
 	const input = `
-cmd a=(1,2)  b \
-  c=3
+cmd -a=(1,2)  b \
+  -c=3
 input
 ----
 wrong
@@ -33,18 +33,20 @@ wrong
 	rec := &recorderTB{TB: t, keepFramework: true}
 	runAndWait(func() {
 		runFromString(rec, input, func(t *TBWrapper[*recorderTB], d *TestData) string {
-			if d.FullCmd() != "cmd a=(1, 2) b c=3" {
+			if d.FullCmd() != "cmd -a=(1, 2) -c=3 b" {
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}
-			d.CmdArgs = d.CmdArgs[1:]
-			if d.FullCmd() != "cmd b c=3" {
+			d.MarkAllFlagsProcessed()
+			d.Flags = d.Flags[1:]
+			d.Args = nil
+			if d.FullCmd() != "cmd -c=3" {
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}
 			return "right"
 		})
 	})
 	expected := []string{
-		"\n<string>:2:\n  cmd a=(1,2)  b  c=3\n  input\n\nexpected:\n  wrong\n\nfound:\n  right",
+		"\n<string>:2:\n  cmd -a=(1,2)  b  -c=3\n  input\n\nexpected:\n  wrong\n\nfound:\n  right",
 	}
 	// Ignore the "fatal during" log.
 	var msgs []string
@@ -58,8 +60,8 @@ wrong
 	}
 
 	// A manually constructed TestData falls back to FullCmd.
-	td := TestData{Cmd: "cmd", CmdArgs: []CmdArg{{Key: "a"}}, Input: "x"}
-	if s := td.origString(); s != "cmd a\nx\n" {
+	td := TestData{Cmd: "cmd", Flags: []Flag{{Name: "a"}}, Args: []string{"b"}, Input: "x"}
+	if s := td.origString(); s != "cmd -a b\nx\n" {
 		t.Fatalf("unexpected origString: %q", s)
 	}
 }

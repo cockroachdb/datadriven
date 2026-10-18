@@ -49,7 +49,10 @@ func ClearResults(path string) error {
 	runAndWait(func() {
 		data = runTestInternal[testing.TB](
 			tb, path, file,
-			func(*TBWrapper[testing.TB], *TestData) string { return "" },
+			func(t *TBWrapper[testing.TB], td *TestData) string {
+				td.MarkAllFlagsProcessed()
+				return ""
+			},
 			true, /* rewrite */
 		)
 	})

@@ -17,122 +17,176 @@ package datadriven
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
-// ParseLine parses a datadriven directive line and returns the parsed command
-// and CmdArgs.
+// ParseLine parses a directive line into the command, the flags and the
+// positional arguments. The words on the line are separated by whitespace,
+// except inside parentheses. After the command, words that start with "-" or
+// "--" followed by a letter are flags; other words are positional arguments,
+// as are all the words after a "--" word. A flag has one of the forms:
 //
-// An input directive line is a command optionally followed by a list of
-// arguments, separated by spaces. Arguments may or may not have values and are
-// specified with one of the forms:
-//   - <argname>                            # No values.
-//   - <argname>=<value>                    # Single value.
-//   - <argname>=(<value1>, <value2>, ...)  # Multiple values.
+//	-name             # No values.
+//	-name=value       # Single value.
+//	-name=(v1, v2)    # Multiple values.
 //
-// Note that in the last case, we allow the values to contain parens; the
-// parsing will take nesting into account. For example:
+// Values can contain parentheses (including whitespace and commas inside
+// them); only top-level commas separate the values in the last form. For
+// example:
 //
-//	cmd exprs=(a + (b + c), d + f)
+//	cmd -exprs=(a + (b + c), d + f) -f=g(x, y) arg1 (an arg) -- -arg3
 //
-// is valid and produces the expected values for the argument.
-func ParseLine(line string) (cmd string, cmdArgs []CmdArg, err error) {
+// has flags -exprs (with values "a + (b + c)" and "d + f") and -f (with value
+// "g(x, y)"), and the arguments "arg1", "(an arg)" and "-arg3".
+func ParseLine(line string) (cmd string, flags []Flag, args []string, err error) {
 	line = strings.TrimSpace(line)
-	if line == "" {
-		return "", nil, nil
+	words, err := splitWords(line)
+	if err != nil {
+		return "", nil, nil, err
 	}
-	origLine := line
-
-	defer func() {
-		if r := recover(); r != nil {
-			if r == (parseError{}) {
-				column := len(origLine) - len(line) + 1
-				cmd = ""
-				cmdArgs = nil
-				err = fmt.Errorf("cannot parse directive at column %d: %s", column, origLine)
-				// Note: to debug an unexpected parsing error, this is a good place to
-				// add a debug.PrintStack().
-			} else {
-				panic(r)
+	if len(words) == 0 {
+		return "", nil, nil, nil
+	}
+	if cmd = words[0].s; isFlag(cmd) || cmd == "--" {
+		return "", nil, nil, parseError(line, words[0].col, "expected a command")
+	}
+	onlyArgs := false
+	for _, w := range words[1:] {
+		if !onlyArgs {
+			if w.s == "--" {
+				onlyArgs = true
+				continue
 			}
-		}
-	}()
-
-	// until removes the prefix up to one of the given characters from line and
-	// returns the prefix.
-	until := func(chars string) string {
-		idx := strings.IndexAny(line, chars)
-		if idx == -1 {
-			idx = len(line)
-		}
-		res := line[:idx]
-		line = line[idx:]
-		return res
-	}
-
-	cmd = until(" ")
-	if cmd == "" {
-		panic(parseError{})
-	}
-	line = strings.TrimSpace(line)
-
-	for line != "" {
-		var arg CmdArg
-		arg.Key = until(" =")
-		if arg.Key == "" {
-			panic(parseError{})
-		}
-		if line != "" && line[0] == '=' {
-			// Skip the '='.
-			line = line[1:]
-
-			if line == "" || line[0] == ' ' {
-				// Empty value.
-				arg.Vals = []string{""}
-			} else if line[0] != '(' {
-				// Single value.
-				val := until(" ")
-				arg.Vals = []string{val}
-			} else {
-				// Skip the '('.
-				pos := 1
-				nestLevel := 1
-				lastValStart := pos
-				// Run through the characters for the values, being mindful of nested
-				// parens. When we find a top-level comma, we "cut" a value and append
-				// it to the array.
-				for nestLevel > 0 {
-					if pos == len(line) {
-						// The string ended before we found the final ')'.
-						panic(parseError{})
-					}
-					r, runeSize := utf8.DecodeRuneInString(line[pos:])
-					pos += runeSize
-					switch r {
-					case ',':
-						if nestLevel == 1 {
-							// Found a top-level comma.
-							arg.Vals = append(arg.Vals, line[lastValStart:pos-1])
-							// Skip any spaces after the comma.
-							for pos < len(line) && line[pos] == ' ' {
-								pos++
-							}
-							lastValStart = pos
-						}
-					case '(':
-						nestLevel++
-					case ')':
-						nestLevel--
-					}
+			if isFlag(w.s) {
+				f, err := parseFlag(w.s)
+				if err != nil {
+					return "", nil, nil, parseError(line, w.col, err.Error())
 				}
-				arg.Vals = append(arg.Vals, line[lastValStart:pos-1])
-				line = strings.TrimSpace(line[pos:])
+				flags = append(flags, f)
+				continue
 			}
 		}
-		cmdArgs = append(cmdArgs, arg)
-		line = strings.TrimSpace(line)
+		args = append(args, w.s)
 	}
-	return cmd, cmdArgs, nil
+	return cmd, flags, args, nil
 }
 
-type parseError struct{}
+type word struct {
+	s string
+	// col is the 1-based byte offset of the start of the word.
+	col int
+}
+
+// splitWords splits the line into words separated by whitespace, except inside
+// parentheses.
+func splitWords(line string) ([]word, error) {
+	var words []word
+	start := -1
+	// openings contains the offsets of the unclosed parentheses.
+	var openings []int
+	for i, r := range line {
+		switch {
+		case r == ')':
+			if len(openings) == 0 {
+				return nil, parseError(line, i+1, "unmatched ')'")
+			}
+			openings = openings[:len(openings)-1]
+		case r == '(':
+			openings = append(openings, i)
+		case unicode.IsSpace(r) && len(openings) == 0:
+			if start != -1 {
+				words = append(words, word{s: line[start:i], col: start + 1})
+				start = -1
+			}
+			continue
+		}
+		if start == -1 {
+			start = i
+		}
+	}
+	if len(openings) > 0 {
+		return nil, parseError(line, openings[0]+1, "unclosed '('")
+	}
+	if start != -1 {
+		words = append(words, word{s: line[start:], col: start + 1})
+	}
+	return words, nil
+}
+
+// isFlag returns true if the word is a flag: it starts with "-" or "--",
+// followed by a letter.
+func isFlag(w string) bool {
+	name := strings.TrimPrefix(w, "-")
+	if len(name) == len(w) {
+		return false
+	}
+	name = strings.TrimPrefix(name, "-")
+	r, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsLetter(r)
+}
+
+// parseFlag parses a word for which isFlag is true.
+func parseFlag(w string) (Flag, error) {
+	w = strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-")
+	name, val, hasVal := strings.Cut(w, "=")
+	if strings.ContainsAny(name, "()") {
+		return Flag{}, fmt.Errorf("invalid flag name %q", name)
+	}
+	f := Flag{Name: name}
+	if !hasVal {
+		return f, nil
+	}
+	if len(val) > 0 && val[0] == '(' && matchingParen(val) == len(val)-1 {
+		f.Vals = splitValues(val[1 : len(val)-1])
+	} else {
+		f.Vals = []string{val}
+	}
+	return f, nil
+}
+
+// matchingParen returns the offset of the parenthesis that closes the one at
+// the start of s (which must have balanced parentheses).
+func matchingParen(s string) int {
+	depth := 0
+	for i, r := range s {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// splitValues splits s at the top-level commas, trimming the whitespace
+// around the values.
+func splitValues(s string) []string {
+	var vals []string
+	depth, start := 0, 0
+	for i, r := range s {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				vals = append(vals, strings.TrimSpace(s[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return append(vals, strings.TrimSpace(s[start:]))
+}
+
+// parseError returns an error for the character at the given 1-based byte
+// offset; the error contains the (1-based) column of the character.
+func parseError(line string, offset int, msg string) error {
+	col := utf8.RuneCountInString(line[:offset-1]) + 1
+	return fmt.Errorf("cannot parse directive at column %d (%s): %s", col, msg, line)
+}

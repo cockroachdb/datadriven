@@ -25,20 +25,18 @@ import (
 // output includes the remaining arguments.
 func popHandler(t testing.TB, d *TestData) string {
 	var buf strings.Builder
-	var i int
 	switch d.Cmd {
 	case "pop-all":
-		for len(d.CmdArgs) > 0 {
+		for len(d.Args) > 0 {
 			fmt.Fprintf(&buf, "%q\n", d.PopArg())
 		}
 	case "pop-twice":
 		d.PopArg()
 		d.PopArg()
-	case "pop-then-key":
-		// The positional argument has the same name as the key.
+	case "pop-then-flag":
+		// The positional argument has the same name as the flag.
 		fmt.Fprintf(&buf, "popped %q\n", d.PopArg())
-		d.ScanArgs("x", &i)
-		fmt.Fprintf(&buf, "x=%d\n", i)
+		fmt.Fprintf(&buf, "x=%d\n", ScanFlag[int](d, "x"))
 	default:
 		t.Fatalf("unknown command %s", d.Cmd)
 	}
@@ -48,19 +46,20 @@ func popHandler(t testing.TB, d *TestData) string {
 
 func TestPopArgs(t *testing.T) {
 	RunTestFromString(t, `
-pop-all a b=1 c=(1,2) d=
+# Arguments are returned verbatim.
+pop-all a b=1 c=(1,2) (d, e)
 ----
 "a"
 "b=1"
-"c=(1, 2)"
-"d="
+"c=(1,2)"
+"(d, e)"
 remaining: pop-all
 
-pop-then-key x x=3 y
+pop-then-flag x -x=3 y
 ----
 popped "x"
 x=3
-remaining: pop-then-key x=3 y
+remaining: pop-then-flag -x=3 y
 `, func(t *T, d *TestData) string {
 		return popHandler(t, d)
 	})

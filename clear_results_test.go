@@ -33,8 +33,8 @@ func TestClearResults(t *testing.T) {
 		{
 			name: "basic",
 			input: `# A comment.
-cmd a=1 \
-  b=2
+cmd -a=1 \
+  -b=2
 input line
 ----
 some output
@@ -64,8 +64,8 @@ last
 last output
 `,
 			expected: `# A comment.
-cmd a=1 \
-  b=2
+cmd -a=1 \
+  -b=2
 input line
 ----
 
@@ -89,14 +89,14 @@ last
 		},
 		{
 			name:        "parse-error",
-			input:       "cmd\n----\nfoo\n\nxx =\n----\nbar\n",
-			expectedErr: "<path>:5: cannot parse directive at column 4: xx =",
+			input:       "cmd\n----\nfoo\n\nxx (\n----\nbar\n",
+			expectedErr: "<path>:5: cannot parse directive at column 4 (unclosed '('): xx (",
 		},
 		{
 			// Processing stops at the first error.
 			name:        "two-errors",
-			input:       "xx =\n\nyy =\n",
-			expectedErr: "<path>:1: cannot parse directive at column 4: xx =",
+			input:       "xx (\n\nyy (\n",
+			expectedErr: "<path>:1: cannot parse directive at column 4 (unclosed '('): xx (",
 		},
 		{
 			name:        "missing-subtest-end",

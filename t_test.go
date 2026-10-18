@@ -260,9 +260,9 @@ func TestAnnotations(t *testing.T) {
 			d.Fatalf("td-fatalf %d", 1)
 		case "scan":
 			var x int
-			d.ScanArgs("x", &x)
+			d.ScanFlagInto("x", &x)
 		case "single-val":
-			d.CmdArgs[0].SingleVal(d.T)
+			d.Flags[0].SingleVal(d.T)
 		case "cleanup":
 			pos := d.Pos
 			t.Cleanup(func() { t.Logf("cleanup from %s", pos) })
@@ -284,7 +284,7 @@ func TestAnnotations(t *testing.T) {
 			input := map[string]string{
 				"nested-wrapper":               "\n\nerrorf\n----\n",
 				"nested-wrapper-mismatch":      "\n\nreturn-x\n----\ny\n",
-				"nested-wrapper-parse-error":   "\n\nxx =\n----\n",
+				"nested-wrapper-parse-error":   "\n\nxx (\n----\n",
 				"nested-wrapper-subtest-error": "\n\nsubtest\n",
 			}[d.Cmd]
 			w := t.(*TBWrapper[*recorderTB])
@@ -317,16 +317,16 @@ func TestAnnotations(t *testing.T) {
 		{cmds: "skip", expected: []string{"<string>:1: skip 1"}},
 		{cmds: "skipf", expected: []string{"<string>:1: skipf 1"}},
 		{cmds: "td-fatalf", expected: []string{"<string>:1: td-fatalf 1"}},
-		{cmds: "scan", expected: []string{"<string>:1: missing argument: x"}},
+		{cmds: "scan", expected: []string{"<string>:1: missing flag: -x"}},
 		{
-			cmds: "scan x=foo",
+			cmds: "scan -x=foo",
 			expected: []string{
-				`<string>:1: argument "x": parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+				`<string>:1: flag -x: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
 			},
 		},
 		{
-			cmds:     "single-val a=(1,2)",
-			expected: []string{`<string>:1: argument "a" requires 1 values, has 2`},
+			cmds:     "single-val -a=(1,2)",
+			expected: []string{`<string>:1: flag -a requires 1 values, has 2`},
 		},
 		{cmds: "ok\nok\nlogf\nerrorf", expected: []string{"<string>:7: logf 1", "<string>:10: errorf 1"}},
 		{cmds: "ok\nnested", expected: []string{"<string>:3: errorf 1"}},
@@ -336,7 +336,7 @@ func TestAnnotations(t *testing.T) {
 		{cmds: "ok\nnested-wrapper-mismatch", expected: nil},
 		{
 			cmds:     "ok\nnested-wrapper-parse-error",
-			expected: []string{"<string>:3: cannot parse directive at column 4: xx ="},
+			expected: []string{"<string>:3: cannot parse directive at column 4 (unclosed '('): xx ("},
 		},
 		{cmds: "ok\nnested-wrapper-subtest-error", expected: []string{"<string>:3: invalid syntax for subtest"}},
 		{
@@ -429,27 +429,27 @@ func TestTOutput(t *testing.T) {
 		{"skipf-nl", func(t *T, d *TestData) { t.Skipf("skipf-nl %d\n", 1) }, "skipf-nl 1"},
 		{"tb-helper", func(t *T, d *TestData) { tbHelperErrorf(t, "tb-helper %d", 1) }, "tb-helper 1"},
 		{"t-helper", func(t *T, d *TestData) { tHelperErrorf(t, "t-helper %d", 1) }, "t-helper 1"},
-		{"scan-arg", func(t *T, d *TestData) { ScanArg[int](d, "scan-arg") }, "missing argument: scan-arg"},
+		{"scan-flag", func(t *T, d *TestData) { ScanFlag[int](d, "scan-flag") }, "missing flag: -scan-flag"},
 		{
-			"scan-arg-or",
+			"scan-flag-or",
 			func(t *T, d *TestData) {
-				d.CmdArgs = []CmdArg{{Key: "or", Vals: []string{"foo"}}}
-				ScanArgOr(d, "or", 1)
+				d.Flags = []Flag{{Name: "or", Vals: []string{"foo"}}}
+				ScanFlagOr(d, "or", 1)
 			},
-			`argument "or": parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+			`flag -or: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
 		},
 		{
-			"maybe-scan-arg",
+			"maybe-scan-flag",
 			func(t *T, d *TestData) {
-				d.CmdArgs = []CmdArg{{Key: "maybe", Vals: []string{"foo"}}}
-				MaybeScanArg[int](d, "maybe")
+				d.Flags = []Flag{{Name: "maybe", Vals: []string{"foo"}}}
+				MaybeScanFlag[int](d, "maybe")
 			},
-			`argument "maybe": parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+			`flag -maybe: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
 		},
 		// The position is not added again if the message already starts with it.
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
-		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanArgs("x", &x) }, "missing argument: x"},
+		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanFlagInto("x", &x) }, "missing flag: -x"},
 	}
 
 	if os.Getenv(tOutputChildEnv) != "" {

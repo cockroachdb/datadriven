@@ -83,7 +83,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 			line = strings.TrimSuffix(line, `\`) + " " + strings.TrimSpace(nextLine)
 		}
 
-		cmd, args, err := ParseLine(line)
+		cmd, flags, args, err := ParseLine(line)
 		if err != nil {
 			t.Fatalf("%s: %v", pos, err)
 		}
@@ -93,7 +93,8 @@ func (r *testDataReader) Next(t testing.TB) bool {
 		}
 
 		r.data.Cmd = cmd
-		r.data.CmdArgs = args
+		r.data.Flags = flags
+		r.data.Args = args
 		r.data.directive = line
 
 		if cmd == "subtest" {

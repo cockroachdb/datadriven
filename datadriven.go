@@ -282,10 +282,10 @@ func runSubTest[U testing.TB](
 			"cannot use t.Skip inside subtest\n%s: subtest started here", subTestStartPos)
 	}
 
-	if seenSubTestEnd && len(r.data.CmdArgs) == 2 && r.data.CmdArgs[1].Key != subTestName {
+	if seenSubTestEnd && len(r.data.Args) == 2 && r.data.Args[1] != subTestName {
 		// If a subtest name was provided after "subtest end", ensure that it matches.
 		r.fatalf(t,
-			"mismatched subtest end directive: expected %q, got %q", subTestName, r.data.CmdArgs[1].Key)
+			"mismatched subtest end directive: expected %q, got %q", subTestName, r.data.Args[1])
 	}
 
 	if !seenSubTestEnd && !t.Failed() {
@@ -304,10 +304,10 @@ func isSubTestStart(t testing.TB, r *testDataReader, mandatorySubTestPrefix stri
 	if _, ok := innermost(t).(*testing.B); ok {
 		r.fatalf(t, "subtest directives are not supported in benchmarks")
 	}
-	if len(r.data.CmdArgs) != 1 {
+	if len(r.data.Args) != 1 || len(r.data.Flags) != 0 {
 		r.fatalf(t, "invalid syntax for subtest")
 	}
-	subTestName := r.data.CmdArgs[0].Key
+	subTestName := r.data.Args[0]
 	if subTestName == "end" {
 		r.fatalf(t, "subtest end without corresponding start")
 	}
@@ -321,10 +321,10 @@ func isSubTestEnd(t testing.TB, r *testDataReader) bool {
 	if r.data.Cmd != "subtest" {
 		return false
 	}
-	if len(r.data.CmdArgs) == 0 || r.data.CmdArgs[0].Key != "end" {
+	if len(r.data.Args) == 0 || r.data.Args[0] != "end" {
 		return false
 	}
-	if len(r.data.CmdArgs) > 2 {
+	if len(r.data.Args) > 2 || len(r.data.Flags) != 0 {
 		r.fatalf(t, "invalid syntax for subtest end")
 	}
 	return true
@@ -383,6 +383,8 @@ func runDirective[U testing.TB](
 		w := newWrapper(t, &r.pos)
 		d.T = w
 		d.curPos = &r.pos
+		// The processed flags are shared by all the copies of d.
+		d.processed = &processedFlags{}
 		actual := f(w, d)
 		fReturned = true
 		if actual != "" && !strings.HasSuffix(actual, "\n") {
@@ -400,6 +402,13 @@ func runDirective[U testing.TB](
 		// Moreover, we can't expect any subsequent test to be even
 		// able to start. Stop processing the file in that case.
 		t.FailNow()
+	}
+
+	// All the flags on the directive line must have been processed; otherwise,
+	// the test is probably not doing what the test file says (e.g. a flag is
+	// misspelled).
+	if unprocessed := d.processed.unprocessed(orig.Flags); len(unprocessed) > 0 {
+		raw.Fatalf("%s: unprocessed flags: %s", orig.Pos, strings.Join(unprocessed, " "))
 	}
 
 	// The test has not failed, we can analyze the expected
@@ -540,12 +549,17 @@ type TestData struct {
 	// has no effect on them.
 	Pos Pos
 
-	// Cmd is the first string on the directive line (up to the first space).
+	// Cmd is the command (the first word on the directive line).
 	Cmd string
 
-	// CmdArgs contains the k/v arguments to the command. PopArg removes
-	// arguments from the front.
-	CmdArgs []CmdArg
+	// Flags contains the flags on the directive line, in order (see ParseLine).
+	// All the flags on the directive line must be processed by the test (see
+	// MarkFlagProcessed).
+	Flags []Flag
+
+	// Args contains the positional arguments on the directive line (the words
+	// that are not flags). PopArg removes arguments from the front.
+	Args []string
 
 	// Input is the text between the directive line and the ---- separator, with
 	// leading and trailing whitespace removed.
@@ -568,14 +582,18 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// ScanArgs, MaybeScanArgs, PopArg, Retry, RetryFor, Fatalf or
-	// the ScanArg functions.
+	// Flag, ScanFlagInto, MaybeScanFlagInto, PopArg, Retry, RetryFor,
+	// Fatalf or the ScanFlag functions.
 	T testing.TB
 
 	// directive is the original directive line (with any continuation lines
-	// joined). Unlike FullCmd, it is not affected by changes to CmdArgs; it is
-	// used when printing errors.
+	// joined). Unlike FullCmd, it is not affected by changes to Flags and Args;
+	// it is used when printing errors.
 	directive string
+
+	// processed contains the names of the flags that were processed (see
+	// MarkFlagProcessed).
+	processed *processedFlags
 
 	// inputPos is the position of the first line of Input in the test file (zero
 	// if the TestData was not read from a file, or Input is empty).
@@ -605,13 +623,13 @@ func (p Pos) String() string {
 
 // InputLines returns an iterator over the lines of Input, along with their
 // positions in the test file. While the body of the loop runs, messages
-// reported through T (including by TestData methods like ScanArgs or Fatalf)
+// reported through T (including by TestData methods like ScanFlagInto or Fatalf)
 // are annotated with the position of the current line, instead of that of the
 // directive. This is useful for directives whose input contains a sequence of
 // commands; for example:
 //
 //	for _, line := range td.InputLines() {
-//		cmd, args, err := datadriven.ParseLine(line)
+//		cmd, flags, args, err := datadriven.ParseLine(line)
 //		if err != nil {
 //			td.Fatalf("%v", err) // Reports the position of the line.
 //		}
@@ -648,17 +666,6 @@ func (td *TestData) withPos(pos Pos, f func() bool) bool {
 	return f()
 }
 
-// FullCmd renders the command and the arguments (which reflect any changes to
-// CmdArgs, e.g. by PopArg).
-func (td *TestData) FullCmd() string {
-	fields := make([]string, 0, len(td.CmdArgs)+1)
-	fields = append(fields, td.Cmd)
-	for i := range td.CmdArgs {
-		fields = append(fields, td.CmdArgs[i].String())
-	}
-	return strings.Join(fields, " ")
-}
-
 // String renders the entire testcase. The string ends in a newline.
 func (td *TestData) String() string {
 	return td.render(td.FullCmd())
@@ -683,100 +690,6 @@ func (td *TestData) render(directive string) string {
 		return directive + "\n"
 	}
 	return fmt.Sprintf("%s\n%s\n", directive, td.Input)
-}
-
-// HasArg checks whether the CmdArgs array contains an entry for the given key.
-func (td *TestData) HasArg(key string) bool {
-	_, ok := td.Arg(key)
-	return ok
-}
-
-// Arg retrieves the first CmdArg matching the given key. The second return
-// value indicates whether such an argument exists.
-func (td *TestData) Arg(key string) (arg CmdArg, ok bool) {
-	for i := range td.CmdArgs {
-		if td.CmdArgs[i].Key == key {
-			return td.CmdArgs[i], true
-		}
-	}
-	return arg, false
-}
-
-// MaybeScanArgs behaves identically to ScanArgs, except that if the arg does
-// not exist it leaves the destinations unmodified and returns false. In all
-// other cases it returns true.
-func (td *TestData) MaybeScanArgs(key string, dests ...any) bool {
-	t := td.tb()
-	t.Helper()
-	if arg, ok := td.Arg(key); ok {
-		arg.scan(t, dests...)
-		return true
-	}
-	return false
-}
-
-// ScanArgs looks up the first CmdArg matching the given key and scans it into
-// the given destinations in order. If the arg does not exist, the number of
-// destinations does not match that of the arguments, or a destination can not
-// be populated from its matching value, a fatal error results. If the arg
-// exists multiple times, the first occurrence is parsed. For example, for a
-// TestData originating from
-//
-//	cmd arg1=50 arg2=yoruba arg3=(50, 50, 50) arg4
-//
-// the following would be valid:
-//
-//	var i1, i2, i3, i4 int
-//	var s string
-//	var l []int
-//	var b bool
-//	td.ScanArgs("arg1", &i1)
-//	td.ScanArgs("arg2", &s)
-//	td.ScanArgs("arg3", &i2, &i3, &i4)
-//	td.ScanArgs("arg3", &l)
-//	td.ScanArgs("arg4", &b) // true
-//
-// The destinations must be pointers to one of: string, bool, integer and
-// floating point types, named types with one of these as the underlying type,
-// time.Duration (but not named types defined from it, which are parsed as
-// integers), or slices of these (which receive all the values). Integers are
-// parsed in base 10. An argument without values (e.g. arg4 above) can be
-// scanned into a bool, as true.
-//
-// See also ScanArg, ScanArgOr and MaybeScanArg.
-func (td *TestData) ScanArgs(key string, dests ...any) {
-	t := td.tb()
-	t.Helper()
-	arg, ok := td.Arg(key)
-	if !ok {
-		t.Fatalf("missing argument: %s", key)
-	}
-	arg.scan(t, dests...)
-}
-
-// PopArg removes the first argument from CmdArgs and returns it, rendered in
-// the directive line syntax (see CmdArg.String; e.g. "c=(1,2)" is returned as
-// "c=(1, 2)"). It is useful for directives with positional arguments; for
-// example, for
-//
-//	cmd foo bar n=5
-//
-// the following would be valid:
-//
-//	a := td.PopArg() // "foo"
-//	b := td.PopArg() // "bar"
-//	td.ScanArgs("n", &n)
-//
-// It is a fatal error if there are no arguments left.
-func (td *TestData) PopArg() string {
-	t := td.tb()
-	t.Helper()
-	if len(td.CmdArgs) == 0 {
-		t.Fatalf("PopArg: no arguments left (directive: %s)", td.directiveLine())
-	}
-	arg := td.CmdArgs[0]
-	td.CmdArgs = td.CmdArgs[1:]
-	return arg.String()
 }
 
 // Retry is used for tests that depend on background goroutines to finish work.
@@ -826,160 +739,6 @@ func (td *TestData) RetryFor(d time.Duration, f func() string) string {
 		}
 		time.Sleep(d/numAttempts + 1)
 	}
-}
-
-// CmdArg contains information about an argument on the directive line. An
-// argument is specified in one of the following forms:
-//   - argument
-//   - argument=value
-//   - argument=(values, ...)
-//
-// The methods which take a testing.TB report errors through it; pass TestData.T
-// so that the errors are annotated with the directive position.
-type CmdArg struct {
-	Key  string
-	Vals []string
-}
-
-// String renders the argument in the directive line syntax. Note that values
-// are not quoted, so a single value that contains a space or a comma (e.g. from
-// "x=(a b)") is not rendered as it appears on the directive line.
-func (arg CmdArg) String() string {
-	switch len(arg.Vals) {
-	case 0:
-		return arg.Key
-
-	case 1:
-		return fmt.Sprintf("%s=%s", arg.Key, arg.Vals[0])
-
-	default:
-		return fmt.Sprintf("%s=(%s)", arg.Key, strings.Join(arg.Vals, ", "))
-	}
-}
-
-// FirstVal asserts that arg has at least one value and returns the first one.
-func (arg CmdArg) FirstVal(t testing.TB) string {
-	t.Helper()
-	if len(arg.Vals) == 0 {
-		t.Fatalf("argument %q requires at least 1 value, has 0", arg.Key)
-	}
-	return arg.Vals[0]
-}
-
-// SingleVal asserts that arg has exactly one value and returns it.
-func (arg CmdArg) SingleVal(t testing.TB) string {
-	t.Helper()
-	arg.expectNumVals(t, 1)
-	return arg.Vals[0]
-}
-
-// TwoVals asserts that arg has exactly two values and returns them.
-func (arg CmdArg) TwoVals(t testing.TB) (string, string) {
-	t.Helper()
-	arg.expectNumVals(t, 2)
-	return arg.Vals[0], arg.Vals[1]
-}
-
-func (arg CmdArg) expectNumVals(t testing.TB, num int) {
-	t.Helper()
-	if len(arg.Vals) != num {
-		t.Fatalf("argument %q requires %d values, has %d", arg.Key, num, len(arg.Vals))
-	}
-}
-
-// Scan attempts to parse the value at index i into the dest.
-func (arg CmdArg) Scan(t testing.TB, i int, dest any) {
-	t.Helper()
-	if err := arg.scanScalarErr(i, dest); err != nil {
-		t.Fatalf("argument %q: value %d: %v", arg.Key, i, err)
-	}
-}
-
-func (arg CmdArg) scan(t testing.TB, dests ...any) {
-	t.Helper()
-	// If only one destination is provided, use scanAllErr which supports
-	// scanning multiple values into a slice destination type.
-	if len(dests) == 1 {
-		if err := arg.scanAllErr(dests[0]); err != nil {
-			t.Fatalf("argument %q: %v", arg.Key, err)
-		}
-		return
-	}
-
-	// Multiple destinations provided; update each corresponding destination to
-	// support invocations of the form:
-	//
-	//   td.ScanArgs("arg3", &i2, &i3, &i4)
-	//
-	if len(dests) != len(arg.Vals) {
-		t.Fatalf("argument %q: %d destinations, but %d values", arg.Key, len(dests), len(arg.Vals))
-	}
-
-	for i := range dests {
-		if err := arg.scanScalarErr(i, dests[i]); err != nil {
-			t.Fatalf("argument %q: value %d: %v", arg.Key, i, err)
-		}
-	}
-}
-
-// scanAllErr scans the argument into dest, which is a pointer to either a
-// slice (which receives all the values) or a scalar (which receives the single
-// value; a bool also accepts no values, as true).
-func (arg CmdArg) scanAllErr(dest any) error {
-	rv := reflect.ValueOf(dest)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
-		return fmt.Errorf("destination must be a non-nil pointer, got %T", dest)
-	}
-
-	if sliceV := rv.Elem(); sliceV.Kind() == reflect.Slice {
-		slice := reflect.MakeSlice(sliceV.Type(), len(arg.Vals), len(arg.Vals))
-		for i := range arg.Vals {
-			if err := arg.scanScalarErr(i, slice.Index(i).Addr().Interface()); err != nil {
-				return fmt.Errorf("value %d: %w", i, err)
-			}
-		}
-		sliceV.Set(slice)
-		return nil
-	}
-
-	switch len(arg.Vals) {
-	case 0:
-		if rv.Elem().Kind() == reflect.Bool {
-			// An argument without values (e.g. "cmd verbose") is a true bool.
-			rv.Elem().SetBool(true)
-			return nil
-		}
-		return fmt.Errorf("no value")
-	case 1:
-		return arg.scanScalarErr(0, dest)
-	default:
-		return fmt.Errorf("%d values; scan into a slice, or pass %d destinations", len(arg.Vals), len(arg.Vals))
-	}
-}
-
-// scanScalarErr is like Scan but returns an error rather than taking a testing.T to fatal.
-func (arg CmdArg) scanScalarErr(i int, dest any) error {
-	if i < 0 || i >= len(arg.Vals) {
-		return fmt.Errorf("index out of range (%d values)", len(arg.Vals))
-	}
-	val := arg.Vals[i]
-
-	// Special cases.
-	switch dest := dest.(type) {
-	case *time.Duration:
-		t, err := time.ParseDuration(val)
-		if err != nil {
-			return err
-		}
-		*dest = t
-		return nil
-	}
-
-	rv := reflect.ValueOf(dest)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
-		return fmt.Errorf("out must be a non-nil pointer")
-	}
-	return parseArgVal(val, rv.Elem())
 }
 
 // Fatalf is a shorthand for td.T.Fatalf, which adds file position information,

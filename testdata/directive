@@ -1,55 +1,140 @@
 some-command
 ----
 cmd: some-command
-0 arguments
+full: some-command
 
-some-command arg1 arg2=val1 arg3=(val1, val2)
+some-command arg1 -flag2=val1 -flag3=(val1, val2)
 ----
 cmd: some-command
-3 arguments
-key="arg1" vals=[]string(nil)
-key="arg2" vals=[]string{"val1"}
-key="arg3" vals=[]string{"val1", "val2"}
+flag: name="flag2" vals=[]string{"val1"}
+flag: name="flag3" vals=[]string{"val1", "val2"}
+arg: "arg1"
+full: some-command -flag2=val1 -flag3=(val1, val2) arg1
 
-# Tolerate extra spaces.
-some-command  arg1   arg2=val1    arg3=(val1,    val2)
+# Tolerate extra whitespace.
+some-command  arg1   -flag2=val1    -flag3=(val1,    val2)
 ----
 cmd: some-command
-3 arguments
-key="arg1" vals=[]string(nil)
-key="arg2" vals=[]string{"val1"}
-key="arg3" vals=[]string{"val1", "val2"}
+flag: name="flag2" vals=[]string{"val1"}
+flag: name="flag3" vals=[]string{"val1", "val2"}
+arg: "arg1"
+full: some-command -flag2=val1 -flag3=(val1, val2) arg1
 
-# Tolerate unnecessary parens.
-some-command arg1=() arg2=(val)
+# Flags can start with - or --; the words after -- are arguments.
+cmd -a --b=1 -- -c --d=2 -- e
 ----
-cmd: some-command
-2 arguments
-key="arg1" vals=[]string{""}
-key="arg2" vals=[]string{"val"}
+cmd: cmd
+flag: name="a" vals=[]string(nil)
+flag: name="b" vals=[]string{"1"}
+arg: "-c"
+arg: "--d=2"
+arg: "--"
+arg: "e"
+full: cmd -a -b=1 -- -c --d=2 -- e
 
-# Allow paren nesting inside values.
-some-command arg1=(1, (2,3), (4 * (1 + 2))) arg2=(some (nested (parens, etc)), more (nested (parens)))
+# Flags and arguments can be interleaved.
+cmd x -a y -b=2 z
 ----
-cmd: some-command
-2 arguments
-key="arg1" vals=[]string{"1", "(2,3)", "(4 * (1 + 2))"}
-key="arg2" vals=[]string{"some (nested (parens, etc))", "more (nested (parens))"}
+cmd: cmd
+flag: name="a" vals=[]string(nil)
+flag: name="b" vals=[]string{"2"}
+arg: "x"
+arg: "y"
+arg: "z"
+full: cmd -a -b=2 x y z
 
-make argTuple=(1, 🍌) argInt=12 argString=greedily,impatient moreIgnore= a,b,c
+# Words that start with - not followed by a letter are arguments.
+cmd -5 -0.5 - --1 -a=-5
+----
+cmd: cmd
+flag: name="a" vals=[]string{"-5"}
+arg: "-5"
+arg: "-0.5"
+arg: "-"
+arg: "--1"
+full: cmd -a=-5 -5 -0.5 - --1
+
+# Empty values and unnecessary parentheses.
+cmd -flag1= -flag2=() -flag3=(val) -flag4=(a b) -flag5=((1, 2))
+----
+cmd: cmd
+flag: name="flag1" vals=[]string{""}
+flag: name="flag2" vals=[]string{""}
+flag: name="flag3" vals=[]string{"val"}
+flag: name="flag4" vals=[]string{"a b"}
+flag: name="flag5" vals=[]string{"(1, 2)"}
+full: cmd -flag1= -flag2= -flag3=val -flag4=(a b) -flag5=((1, 2))
+
+# Parentheses group words, and can be nested inside values.
+cmd -flag1=(1, (2,3), (4 * (1 + 2))) -flag2=(some (nested (parens, etc)), more (nested (parens)))
+----
+cmd: cmd
+flag: name="flag1" vals=[]string{"1", "(2,3)", "(4 * (1 + 2))"}
+flag: name="flag2" vals=[]string{"some (nested (parens, etc))", "more (nested (parens))"}
+full: cmd -flag1=(1, (2,3), (4 * (1 + 2))) -flag2=(some (nested (parens, etc)), more (nested (parens)))
+
+cmd -f=g(x, y) (an arg) h(i j) -g=a,(b c)
+----
+cmd: cmd
+flag: name="f" vals=[]string{"g(x, y)"}
+flag: name="g" vals=[]string{"a,(b c)"}
+arg: "(an arg)"
+arg: "h(i j)"
+full: cmd -f=g(x, y) -g=a,(b c) (an arg) h(i j)
+
+make -argTuple=(1, 🍌) -argInt=12 -argString=greedily,impatient -moreIgnore= a,b,c
 ----
 cmd: make
-5 arguments
-key="argTuple" vals=[]string{"1", "🍌"}
-key="argInt" vals=[]string{"12"}
-key="argString" vals=[]string{"greedily,impatient"}
-key="moreIgnore" vals=[]string{""}
-key="a,b,c" vals=[]string(nil)
+flag: name="argTuple" vals=[]string{"1", "🍌"}
+flag: name="argInt" vals=[]string{"12"}
+flag: name="argString" vals=[]string{"greedily,impatient"}
+flag: name="moreIgnore" vals=[]string{""}
+arg: "a,b,c"
+full: make -argTuple=(1, 🍌) -argInt=12 -argString=greedily,impatient -moreIgnore= a,b,c
 
-index-constraints vars=(a int not null, b int, c int as (a+b) stored) index=(a,)
+index-constraints -vars=(a int not null, b int, c int as (a+b) stored) -index=(a,)
 a+b = 1
 ----
 cmd: index-constraints
-2 arguments
-key="vars" vals=[]string{"a int not null", "b int", "c int as (a+b) stored"}
-key="index" vals=[]string{"a", ""}
+flag: name="vars" vals=[]string{"a int not null", "b int", "c int as (a+b) stored"}
+flag: name="index" vals=[]string{"a", ""}
+full: index-constraints -vars=(a int not null, b int, c int as (a+b) stored) -index=(a, )
+
+# Values that start with ( but are not a list.
+cmd -x=(a)b -y=(a)(b)
+----
+cmd: cmd
+flag: name="x" vals=[]string{"(a)b"}
+flag: name="y" vals=[]string{"(a)(b)"}
+full: cmd -x=(a)b -y=(a)(b)
+
+# Tabs separate words too.
+cmd	-a	x
+----
+cmd: cmd
+flag: name="a" vals=[]string(nil)
+arg: "x"
+full: cmd -a x
+
+# Values that start with ( but are not a single group.
+cmd -a=(a),b -pts=(1,2),(3,4)
+----
+cmd: cmd
+flag: name="a" vals=[]string{"(a),b"}
+flag: name="pts" vals=[]string{"(1,2),(3,4)"}
+full: cmd -a=(a),b -pts=(1,2),(3,4)
+
+# An argument that is --.
+cmd -- --
+----
+cmd: cmd
+arg: "--"
+full: cmd -- --
+
+# Whitespace other than spaces inside parentheses.
+cmd -f=(a b) -g=(a	b)
+----
+cmd: cmd
+flag: name="f" vals=[]string{"a\u00a0b"}
+flag: name="g" vals=[]string{"a\tb"}
+full: cmd -f=(a b) -g=(a	b)
