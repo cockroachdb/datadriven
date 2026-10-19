@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 )
 
@@ -238,6 +239,104 @@ func (td *TestData) PopArg() string {
 	arg := td.Args[0]
 	td.Args = td.Args[1:]
 	return arg
+}
+
+// PopArgs parses the first len(values) positional arguments into the given
+// values, one argument per value; it then removes these arguments from Args.
+// For example, for
+//
+//	cmd 12 foo bar
+//
+// the following would be valid:
+//
+//	var i int
+//	var s string
+//	td.PopArgs(&i, &s) // td.Args is now ["bar"]
+//
+// The values must be non-nil pointers. Values of the (non-slice) types
+// supported by FlagValue are parsed in the same way: e.g. integers are parsed
+// in base 10 (a leading 0 does not indicate an octal number) and a
+// time.Duration is parsed with time.ParseDuration. Values of other types (e.g.
+// implementations of fmt.Scanner) are scanned like fmt.Sscan does.
+//
+// It is a fatal error if there are not enough arguments, or if an argument
+// can't be parsed in its entirety (e.g. an int with an argument "12abc").
+func (td *TestData) PopArgs(values ...any) {
+	td.tb().Helper()
+	td.scanEachArg("PopArgs", values)
+	td.Args = td.Args[len(values):]
+}
+
+// ScanArgs is like PopArgs, except that it is a fatal error if there are more
+// arguments than values. Args is not modified.
+func (td *TestData) ScanArgs(values ...any) {
+	td.tb().Helper()
+	td.scanEachArg("ScanArgs", values)
+	td.checkNoArgsLeft("ScanArgs", len(values))
+}
+
+// scanEachArg implements PopArgs and ScanArgs: it parses each of the first
+// len(values) arguments into the corresponding value.
+func (td *TestData) scanEachArg(desc string, values []any) {
+	t := td.tb()
+	t.Helper()
+	td.checkPointers(desc, values)
+	if len(values) > len(td.Args) {
+		t.Fatalf("%s: not enough arguments (directive: %s)", desc, td.directiveLine())
+	}
+	for i, v := range values {
+		if err := parseArg(td.Args[i], v); err != nil {
+			t.Fatalf("%s: argument %q: %v (directive: %s)", desc, td.Args[i], err, td.directiveLine())
+		}
+	}
+}
+
+// parseArg parses a positional argument into the value that v (a non-nil
+// pointer) points to. The types supported by FlagValue are parsed in the same
+// way; other types are scanned with fmt.Fscan, which must consume the entire
+// argument.
+func parseArg(arg string, v any) error {
+	if _, ok := v.(fmt.Scanner); !ok {
+		if dest := reflect.ValueOf(v).Elem(); isParseableKind(dest.Kind()) {
+			return parseValue(arg, dest)
+		}
+	}
+	r := strings.NewReader(arg)
+	if _, err := fmt.Fscan(r, v); err != nil {
+		return err
+	}
+	if r.Len() > 0 {
+		return fmt.Errorf("unexpected %q after the scanned value", arg[len(arg)-r.Len():])
+	}
+	return nil
+}
+
+// checkPointers fails the test if any of the values is not a non-nil pointer.
+func (td *TestData) checkPointers(desc string, values []any) {
+	t := td.tb()
+	t.Helper()
+	if len(values) > 0 && desc == "ScanArgs" {
+		if _, ok := values[0].(testing.TB); ok {
+			// This is v1 code: ScanArgs(t, key, dests...).
+			t.Fatalf("ScanArgs: value 0 is a %T; ScanArgs scans the positional arguments "+
+				"(use FlagValue to retrieve the value of a flag)", values[0])
+		}
+	}
+	for i, v := range values {
+		if rv := reflect.ValueOf(v); rv.Kind() != reflect.Pointer || rv.IsNil() {
+			t.Fatalf("%s: value %d must be a non-nil pointer, got %T", desc, i, v)
+		}
+	}
+}
+
+// checkNoArgsLeft fails the test if there are arguments after the first n.
+func (td *TestData) checkNoArgsLeft(desc string, n int) {
+	if n < len(td.Args) {
+		t := td.tb()
+		t.Helper()
+		t.Fatalf("%s: unexpected arguments: %s (directive: %s)",
+			desc, strings.Join(td.Args[n:], " "), td.directiveLine())
+	}
 }
 
 // FullCmd renders the command, the flags and the positional arguments (which

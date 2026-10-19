@@ -91,10 +91,13 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   `dd.ScanArgOpt`) becomes
   `if d.HasFlag("x") { x := d.FlagValue[T]("x"); ... }`. `d.HasFlag` replaces
   `d.HasArg`, and `d.BoolFlag` checks for a flag without a value (e.g.
-  `-verbose`). The other
-  scanning methods (`Arg`, multiple-destination `ScanArgs`, `CmdArg.Scan`,
-  `FirstVal`, etc.) are removed. Positional arguments can be retrieved with
-  `PopArg`. Some error messages have changed.
+  `-verbose`). The other scanning methods (`Arg`, `CmdArg.Scan`, `FirstVal`,
+  etc.) are removed. Positional arguments can be retrieved with `PopArg`,
+  `PopArgs` and `ScanArgs`, which parse values like `FlagValue` does (e.g.
+  integers in base 10). Note that `ScanArgs` now scans the positional
+  arguments: v1 code like `d.ScanArgs(t, "x", &x)` still compiles, but fails
+  at run time (with a message pointing to `FlagValue`). Some error messages
+  have changed.
 - **`ParseLine`** returns the flags and the arguments separately
   (`cmd, flags, args, err := datadriven.ParseLine(line)`); to use the flag API
   on them, construct a `TestData` (e.g.

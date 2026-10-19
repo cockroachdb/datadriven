@@ -564,7 +564,7 @@ type TestData struct {
 	Flags []Flag
 
 	// Args contains the positional arguments on the directive line (the words
-	// that are not flags). PopArg removes arguments from the front.
+	// that are not flags). PopArg and PopArgs remove arguments from the front.
 	Args []string
 
 	// Input is the text between the directive line and the ---- separator, with
@@ -588,7 +588,7 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// BoolFlag, FlagValue, FlagValueOr, PopArg, Retry,
+	// BoolFlag, FlagValue, FlagValueOr, PopArg, PopArgs, ScanArgs, Retry,
 	// RetryFor or Fatalf.
 	T testing.TB
 
@@ -803,9 +803,21 @@ func indentLines(str string) string {
 	return b.String()
 }
 
+// isParseableKind returns true for the kinds supported by parseArgVal.
+func isParseableKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+	return false
+}
+
 // parseArgVal parses s and stores it into dest, which must have type int*,
 // uint*, float*, string, bool, or a named type with one of those underlying
-// kinds.
+// kinds (see isParseableKind).
 //
 // Integers are parsed in base 10.
 func parseArgVal(s string, dest reflect.Value) error {
