@@ -388,3 +388,82 @@ func TestManualTestData(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+type (
+	customInt    int
+	customUint8  uint8
+	customFloat  float32
+	customString string
+	customBool   bool
+	customInts   []int
+	customElems  []customInt
+	customStrs   []customString
+)
+
+// TestFlagValueCustomTypes verifies that FlagValue and FlagValueOr work with
+// named types (scalars and slices).
+func TestFlagValueCustomTypes(t *testing.T) {
+	RunTestFromString(t, `
+custom -x=5 -u=7 -f=1.5 -s=foo -b=true -ints=(1, 2) -int=3 -elems=(4, 5) -strs=(a, b)
+----
+ok
+`, func(t *T, d *TestData) string {
+		check := func(name string, got, expected any) {
+			t.Helper()
+			if !reflect.DeepEqual(got, expected) {
+				t.Errorf("%s: expected %#v, got %#v", name, expected, got)
+			}
+		}
+		check("x", d.FlagValue[customInt]("x"), customInt(5))
+		check("u", d.FlagValue[customUint8]("u"), customUint8(7))
+		check("f", d.FlagValue[customFloat]("f"), customFloat(1.5))
+		check("s", d.FlagValue[customString]("s"), customString("foo"))
+		check("b", d.FlagValue[customBool]("b"), customBool(true))
+		check("ints", d.FlagValue[customInts]("ints"), customInts{1, 2})
+		check("int", d.FlagValue[customInts]("int"), customInts{3})
+		check("elems", d.FlagValue[customElems]("elems"), customElems{4, 5})
+		check("[]customInt", d.FlagValue[[]customInt]("elems"), []customInt{4, 5})
+		check("strs", d.FlagValue[customStrs]("strs"), customStrs{"a", "b"})
+		// FlagValueOr infers the type from the default value.
+		check("or-x", d.FlagValueOr("x", customInt(0)), customInt(5))
+		check("or-missing", d.FlagValueOr("missing", customInt(9)), customInt(9))
+		check("or-ints", d.FlagValueOr("ints", customInts(nil)), customInts{1, 2})
+		check("or-missing-ints", d.FlagValueOr("missing-ints", customInts{7}), customInts{7})
+		return "ok"
+	})
+}
+
+func TestFlagValueCustomTypeErrors(t *testing.T) {
+	testCases := []struct {
+		directive string
+		f         func(d *TestData)
+		expected  string
+	}{
+		{
+			"cmd -u=300", func(d *TestData) { d.FlagValue[customUint8]("u") },
+			`<string>:1: flag -u: parse "300" as datadriven.customUint8: strconv.ParseUint: parsing "300": value out of range`,
+		},
+		{
+			"cmd -x=(1, 2)", func(d *TestData) { d.FlagValue[customInt]("x") },
+			`<string>:1: flag -x: the value is a list; use a slice type`,
+		},
+		{
+			"cmd -e=(1, x)", func(d *TestData) { d.FlagValue[customElems]("e") },
+			`<string>:1: flag -e: value 1: parse "x" as datadriven.customInt: strconv.ParseInt: parsing "x": invalid syntax`,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.directive, func(t *testing.T) {
+			rec := &recorderTB{TB: t}
+			runAndWait(func() {
+				runFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+					tc.f(d)
+					return ""
+				})
+			})
+			if expected := []string{tc.expected}; !reflect.DeepEqual(rec.msgs, expected) {
+				t.Fatalf("expected:\n  %s\ngot:\n  %s", tc.expected, strings.Join(rec.msgs, "\n  "))
+			}
+		})
+	}
+}

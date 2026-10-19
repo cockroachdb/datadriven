@@ -95,8 +95,9 @@ func (td *TestData) BoolFlag(name string) bool {
 //	d := td.FlagValue[time.Duration]("d")
 //
 // V must be one of: string, bool, integer and floating point types, named types
-// with one of these as the underlying type, time.Duration (but not named types
-// defined from it, which are parsed as integers), or slices of these. A list
+// with one of these as the underlying type (e.g. type X int), time.Duration
+// (but not named types defined from it, which are parsed as integers), or
+// slices of these, including named slice types (e.g. type Elems []X). A list
 // value (e.g. -names=(a, b)) can only be retrieved as a slice; a single value
 // can be retrieved either as a scalar or as a slice with one element. Integers
 // are parsed in base 10.
