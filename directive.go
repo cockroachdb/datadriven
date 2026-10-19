@@ -181,11 +181,11 @@ func parseValue(s string, dest reflect.Value) error {
 // fails. Flags that are looked up by name (e.g. with HasFlag, FlagValue) are
 // marked as processed automatically.
 func (td *TestData) MarkFlagProcessed(name string) {
-	if td.processed == nil {
-		// This is a TestData constructed manually.
-		td.processed = &processedFlags{}
+	// The processed flags are only tracked (and checked) for the TestData passed
+	// to the test function (not for a TestData constructed manually).
+	if td.processed != nil {
+		td.processed.add(name)
 	}
-	td.processed.add(name)
 }
 
 // MarkAllFlagsProcessed marks all the flags as processed (see
@@ -197,7 +197,8 @@ func (td *TestData) MarkAllFlagsProcessed() {
 }
 
 // processedFlags is the set of the names of the flags that were processed. It
-// is shared by all the copies of a TestData, and it is safe for concurrent use.
+// is shared by all the copies of the TestData passed to the test function, and
+// it is safe for concurrent use.
 type processedFlags struct {
 	mu    sync.Mutex
 	names map[string]struct{}

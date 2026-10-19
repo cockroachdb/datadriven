@@ -86,8 +86,12 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   the value of a flag is retrieved with `d.FlagValue[T]("x")` (which replaces
   the `var x T; d.ScanArgs("x", &x)` pattern; the type can't be inferred, so
   this isn't done by the rewrites above) or `d.FlagValueOr("x", def)`; a list
-  value is retrieved as a slice. `d.HasFlag` replaces `d.HasArg`, and
-  `d.BoolFlag` checks for a flag without a value (e.g. `-verbose`). The other
+  value is retrieved as a slice. Code that depends on whether an optional
+  argument is present (e.g. `if d.MaybeScanArgs(...)`, or CockroachDB's
+  `dd.ScanArgOpt`) becomes
+  `if d.HasFlag("x") { x := d.FlagValue[T]("x"); ... }`. `d.HasFlag` replaces
+  `d.HasArg`, and `d.BoolFlag` checks for a flag without a value (e.g.
+  `-verbose`). The other
   scanning methods (`Arg`, multiple-destination `ScanArgs`, `CmdArg.Scan`,
   `FirstVal`, etc.) are removed. Positional arguments can be retrieved with
   `PopArg`. Some error messages have changed.

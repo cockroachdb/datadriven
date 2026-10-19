@@ -37,8 +37,9 @@ wrong
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}
 			d.MarkAllFlagsProcessed()
+			d.Flags = d.Flags[1:]
 			d.Args = nil
-			if d.FullCmd() != "cmd -a=(1, 2) -c=3" {
+			if d.FullCmd() != "cmd -c=3" {
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}
 			return "right"

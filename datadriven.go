@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -343,9 +344,12 @@ func runDirective[U testing.TB](
 	// unchanged) if the callback retains it (e.g. in a t.Cleanup function).
 	d := new(TestData)
 	*d = r.data
-	// The framework messages use a copy of the directive, which is not affected
-	// by changes the callback makes to d.
+	processed := &processedFlags{}
+	// The framework messages and the check for unprocessed flags use a copy of
+	// the directive, which is not affected by changes the callback makes to d
+	// (including to the elements of d.Flags).
 	orig := r.data
+	orig.Flags = slices.Clone(orig.Flags)
 	actual := func() string {
 		fReturned := false
 		defer func() {
@@ -383,8 +387,9 @@ func runDirective[U testing.TB](
 		w := newWrapper(t, &r.pos)
 		d.T = w
 		d.curPos = &r.pos
-		// The processed flags are shared by all the copies of d.
-		d.processed = &processedFlags{}
+		// The processed flags are shared by all the copies of d. The check below
+		// uses this set even if the callback overwrites *d.
+		d.processed = processed
 		actual := f(w, d)
 		fReturned = true
 		if actual != "" && !strings.HasSuffix(actual, "\n") {
@@ -407,7 +412,7 @@ func runDirective[U testing.TB](
 	// All the flags on the directive line must have been processed; otherwise,
 	// the test is probably not doing what the test file says (e.g. a flag is
 	// misspelled).
-	if unprocessed := d.processed.unprocessed(orig.Flags); len(unprocessed) > 0 {
+	if unprocessed := processed.unprocessed(orig.Flags); len(unprocessed) > 0 {
 		raw.Fatalf("%s: unprocessed flags: %s", orig.Pos, strings.Join(unprocessed, " "))
 	}
 

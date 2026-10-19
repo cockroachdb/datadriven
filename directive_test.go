@@ -17,6 +17,7 @@ package datadriven
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,8 @@ import (
 )
 
 type namedInt int
+
+type namedSlice []string
 
 func TestFlagValue(t *testing.T) {
 	RunTestFromString(t, `
@@ -38,6 +41,10 @@ n=3 m=10
 bool -a -c=1
 ----
 a=true b=false has-c=true
+
+slices -ds=(1s, 2m) -d1=3s -ns=(a, b) -ni=(4, 5)
+----
+ds=[1s 2m0s] d1=[3s] ns=datadriven.namedSlice{"a", "b"} ni=[]datadriven.namedInt{4, 5}
 `, func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "values":
@@ -49,6 +56,10 @@ a=true b=false has-c=true
 			return fmt.Sprintf("n=%d m=%d", d.FlagValueOr("n", 1), d.FlagValueOr("m", 10))
 		case "bool":
 			return fmt.Sprintf("a=%t b=%t has-c=%t", d.BoolFlag("a"), d.BoolFlag("b"), d.HasFlag("c"))
+		case "slices":
+			return fmt.Sprintf("ds=%v d1=%v ns=%#v ni=%#v",
+				d.FlagValue[[]time.Duration]("ds"), d.FlagValue[[]time.Duration]("d1"),
+				d.FlagValue[namedSlice]("ns"), d.FlagValue[[]namedInt]("ni"))
 		}
 		t.Fatalf("unknown command %s", d.Cmd)
 		return ""
@@ -191,6 +202,41 @@ func TestFlagProcessing(t *testing.T) {
 			},
 		},
 		{
+			// Modifying Flags in place doesn't affect the check (DeleteFunc moves and
+			// zeroes elements of the slice).
+			name:  "in-place",
+			input: "cmd -a -b=1 -c\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.BoolFlag("a")
+				d.FlagValue[int]("b")
+				d.BoolFlag("c")
+				d.Flags = slices.DeleteFunc(d.Flags, func(f Flag) bool { return f.Name != "c" })
+				d.Flags[0].Name = "renamed"
+				return ""
+			},
+		},
+		{
+			name:  "in-place-unprocessed",
+			input: "cmd -a -b=1 -c\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.BoolFlag("a")
+				d.Flags = slices.DeleteFunc(d.Flags, func(f Flag) bool { return f.Name != "a" })
+				return ""
+			},
+			expected: []string{"<string>:1: unprocessed flags: -b=1 -c"},
+		},
+		{
+			// Overwriting the TestData doesn't affect the check.
+			name:  "overwrite",
+			input: "cmd -a -b=1\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.HasFlag("a")
+				*d = TestData{Cmd: "x", T: t}
+				return ""
+			},
+			expected: []string{"<string>:1: unprocessed flags: -b=1"},
+		},
+		{
 			// A copy of the TestData shares the processed flags.
 			name:  "copy",
 			input: "cmd -a -b=1\n----\n",
@@ -318,4 +364,27 @@ func TestManualFlag(t *testing.T) {
 	if s := td.FullCmd(); s != "cmd -x" {
 		t.Fatalf("unexpected FullCmd: %q", s)
 	}
+}
+
+// TestManualTestData verifies that the flag API can be used (including
+// concurrently) on a TestData constructed manually.
+func TestManualTestData(t *testing.T) {
+	cmd, flags, args, err := ParseLine("cmd -a -b=1 x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	td := &TestData{Cmd: cmd, Flags: flags, Args: args, T: t}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 100 {
+				if !td.BoolFlag("a") || td.FlagValue[int]("b") != 1 || td.FlagValueOr("c", 2) != 2 {
+					t.Error("unexpected value")
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
