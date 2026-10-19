@@ -1,6 +1,6 @@
 # Migrating from v1 to v2
 
-v2 requires Go 1.24. v1 (v1.0.2 or later; older versions panic at startup)
+v2 requires Go 1.27. v1 (v1.0.2 or later; older versions panic at startup)
 and v2 can be linked in the same test binary (they share the `-rewrite` and
 `-datadriven-quiet` flags), so a large repository can be migrated one package
 at a time. Note that `TestData` (and the other types) of v1 and v2 are
