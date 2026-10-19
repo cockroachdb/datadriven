@@ -432,7 +432,7 @@ func TestTOutput(t *testing.T) {
 		{
 			"flag-value-or",
 			func(t *T, d *TestData) {
-				d.flags = []directiveFlag{{name: "or", vals: []string{"foo"}}}
+				d.Flags = []Flag{{Name: "or", Vals: []string{"foo"}}}
 				FlagValueOr(d, "or", 1)
 			},
 			`flag -or: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
@@ -440,7 +440,7 @@ func TestTOutput(t *testing.T) {
 		{
 			"bool-flag",
 			func(t *T, d *TestData) {
-				d.flags = []directiveFlag{{name: "b", vals: []string{"x"}}}
+				d.Flags = []Flag{{Name: "b", Vals: []string{"x"}}}
 				d.BoolFlag("b")
 			},
 			`flag -b must not have a value: -b=x`,

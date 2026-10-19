@@ -99,11 +99,11 @@ parse
 ----
 cannot parse directive at column 5 (unclosed '('): é 🍌 (
 `, func(t *T, d *TestData) string {
-		p, err := ParseLine(d.Input)
+		cmd, flags, args, err := ParseLine(d.Input)
 		if err != nil {
 			return err.Error()
 		}
-		return fmt.Sprintf("%q %v %v", p.Cmd, p.flags, p.Args)
+		return fmt.Sprintf("%q %v %v", cmd, flags, args)
 	})
 }
 
@@ -198,14 +198,14 @@ func TestDirective(t *testing.T) {
 	RunTest(t, "testdata/directive", func(t *T, d *TestData) string {
 		var buf bytes.Buffer
 		fmt.Fprintf(&buf, "cmd: %s\n", d.Cmd)
-		for _, f := range d.flags {
+		for _, f := range d.Flags {
 			switch {
-			case f.list:
-				fmt.Fprintf(&buf, "flag: name=%q list=%#v\n", f.name, f.vals)
-			case f.vals != nil:
-				fmt.Fprintf(&buf, "flag: name=%q value=%q\n", f.name, f.vals[0])
+			case f.List:
+				fmt.Fprintf(&buf, "flag: name=%q list=%#v\n", f.Name, f.Vals)
+			case f.Vals != nil:
+				fmt.Fprintf(&buf, "flag: name=%q value=%q\n", f.Name, f.Vals[0])
 			default:
-				fmt.Fprintf(&buf, "flag: name=%q\n", f.name)
+				fmt.Fprintf(&buf, "flag: name=%q\n", f.Name)
 			}
 		}
 		d.MarkAllFlagsProcessed()
@@ -215,12 +215,12 @@ func TestDirective(t *testing.T) {
 		// FullCmd renders the directive such that it is parsed the same way.
 		full := d.FullCmd()
 		fmt.Fprintf(&buf, "full: %s\n", full)
-		p, err := ParseLine(full)
+		cmd, flags, args, err := ParseLine(full)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p.Cmd != d.Cmd || !reflect.DeepEqual(p.flags, d.flags) || !reflect.DeepEqual(p.Args, d.Args) {
-			t.Fatalf("FullCmd() parsed as %q %v %v", p.Cmd, p.flags, p.Args)
+		if cmd != d.Cmd || !reflect.DeepEqual(flags, d.Flags) || !reflect.DeepEqual(args, d.Args) {
+			t.Fatalf("FullCmd() parsed as %q %v %v", cmd, flags, args)
 		}
 		return buf.String()
 	})

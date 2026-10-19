@@ -304,7 +304,7 @@ func isSubTestStart(t testing.TB, r *testDataReader, mandatorySubTestPrefix stri
 	if _, ok := innermost(t).(*testing.B); ok {
 		r.fatalf(t, "subtest directives are not supported in benchmarks")
 	}
-	if len(r.data.Args) != 1 || len(r.data.flags) != 0 {
+	if len(r.data.Args) != 1 || len(r.data.Flags) != 0 {
 		r.fatalf(t, "invalid syntax for subtest")
 	}
 	subTestName := r.data.Args[0]
@@ -324,7 +324,7 @@ func isSubTestEnd(t testing.TB, r *testDataReader) bool {
 	if len(r.data.Args) == 0 || r.data.Args[0] != "end" {
 		return false
 	}
-	if len(r.data.Args) > 2 || len(r.data.flags) != 0 {
+	if len(r.data.Args) > 2 || len(r.data.Flags) != 0 {
 		r.fatalf(t, "invalid syntax for subtest end")
 	}
 	return true
@@ -407,7 +407,7 @@ func runDirective[U testing.TB](
 	// All the flags on the directive line must have been processed; otherwise,
 	// the test is probably not doing what the test file says (e.g. a flag is
 	// misspelled).
-	if unprocessed := d.processed.unprocessed(orig.flags); len(unprocessed) > 0 {
+	if unprocessed := d.processed.unprocessed(orig.Flags); len(unprocessed) > 0 {
 		raw.Fatalf("%s: unprocessed flags: %s", orig.Pos, strings.Join(unprocessed, " "))
 	}
 
@@ -552,6 +552,12 @@ type TestData struct {
 	// Cmd is the command (the first word on the directive line).
 	Cmd string
 
+	// Flags contains the flags on the directive line, in order (see ParseLine).
+	// They are usually retrieved by name (with HasFlag, BoolFlag, FlagValue,
+	// FlagValueOr). All the flags on the directive line must be processed by
+	// the test (see MarkFlagProcessed).
+	Flags []Flag
+
 	// Args contains the positional arguments on the directive line (the words
 	// that are not flags). PopArg removes arguments from the front.
 	Args []string
@@ -582,14 +588,9 @@ type TestData struct {
 	T testing.TB
 
 	// directive is the original directive line (with any continuation lines
-	// joined). Unlike FullCmd, it is not affected by changes to Args;
+	// joined). Unlike FullCmd, it is not affected by changes to Flags and Args;
 	// it is used when printing errors.
 	directive string
-
-	// flags contains the flags on the directive line, in order (see ParseLine).
-	// They are retrieved with HasFlag, BoolFlag, FlagValue, etc. All of them
-	// must be processed by the test (see MarkFlagProcessed).
-	flags []directiveFlag
 
 	// processed contains the names of the flags that were processed (see
 	// MarkFlagProcessed).
@@ -629,11 +630,11 @@ func (p Pos) String() string {
 // commands; for example:
 //
 //	for _, line := range td.InputLines() {
-//		sub, err := datadriven.ParseLine(line)
+//		cmd, flags, args, err := datadriven.ParseLine(line)
 //		if err != nil {
 //			td.Fatalf("%v", err) // Reports the position of the line.
 //		}
-//		sub.T = td.T
+//		sub := &datadriven.TestData{Cmd: cmd, Flags: flags, Args: args, T: td.T}
 //		n := datadriven.FlagValue[int](sub, "n") // So do errors here.
 //		...
 //	}

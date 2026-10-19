@@ -101,7 +101,7 @@
 // as a slice). The positional arguments are in TestData.Args (see also PopArg).
 // All the flags must be processed by the test (so that
 // e.g. a misspelled flag doesn't go unnoticed): the flags that are retrieved by
-// name are processed automatically, and the others (see FlagNames) can be
+// name are processed automatically, and the others (see TestData.Flags) can be
 // marked with MarkFlagProcessed. Otherwise, the directive fails.
 //
 // # Subtests

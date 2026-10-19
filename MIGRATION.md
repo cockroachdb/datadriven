@@ -33,7 +33,7 @@ with the test code that parses it.
 All the flags must be processed by the test, otherwise the directive fails;
 this catches misspelled flags. Flags that the test retrieves by name are
 processed automatically; flags that are processed by iterating over
-`d.FlagNames()` must be marked with `d.MarkFlagProcessed` (or
+`d.Flags` must be marked with `d.MarkFlagProcessed` (or
 `d.MarkAllFlagsProcessed`).
 
 ## Mechanical changes
@@ -80,9 +80,9 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   a string is needed, and `d.Pos.File` / `d.Pos.Line` instead of parsing the
   string. Assigning `d.Pos` no longer affects messages: to report errors at the
   position of a line within the input, iterate with `d.InputLines()`.
-- **Flags and arguments.** `TestData.CmdArgs` and the `CmdArg` type are
-  replaced by the flags, which are accessed by name, and `Args` (the positional
-  arguments, as strings). The value of a flag is retrieved with
+- **Flags and arguments.** `TestData.CmdArgs` is replaced by `Flags` (of type
+  `Flag`, which replaces `CmdArg`, with `Name`, `Vals` and `List`) and `Args`
+  (the positional arguments, as strings). Flags are usually accessed by name. The value of a flag is retrieved with
   `datadriven.FlagValue[T](d, "x")` (which replaces the
   `var x T; d.ScanArgs("x", &x)` pattern; the type can't be inferred, so this
   isn't done by the rewrites above) or `datadriven.FlagValueOr(d, "x", def)`; a
@@ -91,11 +91,12 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   scanning methods (`Arg`, multiple-destination `ScanArgs`, `CmdArg.Scan`,
   `FirstVal`, etc.) are removed. Positional arguments can be retrieved with
   `PopArg`. Some error messages have changed.
-- **`ParseLine`** returns a `*TestData` (with `Cmd`, `Args` and the flags), on
-  which the same API can be used once `T` is set (e.g. `sub.T = d.T`). It also
-  replaces `TestData` values constructed manually. Only the flags on the
-  directive line itself must be processed; flags parsed this way are not
-  checked.
+- **`ParseLine`** returns the flags and the arguments separately
+  (`cmd, flags, args, err := datadriven.ParseLine(line)`); to use the flag API
+  on them, construct a `TestData` (e.g.
+  `&datadriven.TestData{Cmd: cmd, Flags: flags, Args: args, T: d.T}`). Only the
+  flags on the directive line itself must be processed; flags parsed this way
+  are not checked.
 - **`FullCmd` and `TestData.String`** render the flags (with their dashes)
   before the arguments, so expected outputs that include them change.
 - **Subtests in benchmarks.** `subtest` directives are not supported when

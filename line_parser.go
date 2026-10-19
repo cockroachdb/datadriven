@@ -22,11 +22,8 @@ import (
 	"unicode/utf8"
 )
 
-// ParseLine parses a directive line into a TestData with the command (Cmd),
-// the flags and the positional arguments (Args) set; Input and Expected are
-// empty. T must be set before using the methods that can fail the test (e.g.
-// FlagValue); the flags of a TestData returned by ParseLine are not required to
-// be processed. An empty line results in an empty Cmd.
+// ParseLine parses a directive line into the command, the flags and the
+// positional arguments. An empty line results in an empty command.
 //
 // The words on the line are separated by whitespace, except inside
 // parentheses. After the command, words that start with "-" or "--" followed
@@ -46,21 +43,7 @@ import (
 //
 // has flags -exprs (with the list of values "a + (b + c)" and "d + f") and -f
 // (with value "g(x, y)"), and the arguments "arg1", "(an arg)" and "-arg3".
-func ParseLine(line string) (*TestData, error) {
-	cmd, flags, args, err := parseLine(line)
-	if err != nil {
-		return nil, err
-	}
-	return &TestData{
-		Cmd:       cmd,
-		Args:      args,
-		flags:     flags,
-		directive: strings.TrimSpace(line),
-	}, nil
-}
-
-// parseLine implements ParseLine.
-func parseLine(line string) (cmd string, flags []directiveFlag, args []string, err error) {
+func ParseLine(line string) (cmd string, flags []Flag, args []string, err error) {
 	line = strings.TrimSpace(line)
 	words, err := splitWords(line)
 	if err != nil {
@@ -84,8 +67,8 @@ func parseLine(line string) (cmd string, flags []directiveFlag, args []string, e
 				if err != nil {
 					return "", nil, nil, parseError(line, w.col, err.Error())
 				}
-				if slices.ContainsFunc(flags, func(g directiveFlag) bool { return g.name == f.name }) {
-					return "", nil, nil, parseError(line, w.col, fmt.Sprintf("flag -%s is repeated", f.name))
+				if slices.ContainsFunc(flags, func(g Flag) bool { return g.Name == f.Name }) {
+					return "", nil, nil, parseError(line, w.col, fmt.Sprintf("flag -%s is repeated", f.Name))
 				}
 				flags = append(flags, f)
 				continue
@@ -151,22 +134,22 @@ func isFlag(w string) bool {
 }
 
 // parseFlag parses a word for which isFlag is true.
-func parseFlag(w string) (directiveFlag, error) {
+func parseFlag(w string) (Flag, error) {
 	w = strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-")
 	name, val, hasVal := strings.Cut(w, "=")
 	if strings.ContainsAny(name, "()") {
-		return directiveFlag{}, fmt.Errorf("invalid flag name %q", name)
+		return Flag{}, fmt.Errorf("invalid flag name %q", name)
 	}
-	f := directiveFlag{name: name}
+	f := Flag{Name: name}
 	switch {
 	case !hasVal:
 	case len(val) > 0 && val[0] == '(' && matchingParen(val) == len(val)-1:
-		f.list = true
+		f.List = true
 		if inner := strings.TrimSpace(val[1 : len(val)-1]); inner != "" {
-			f.vals = splitValues(inner)
+			f.Vals = splitValues(inner)
 		}
 	default:
-		f.vals = []string{val}
+		f.Vals = []string{val}
 	}
 	return f, nil
 }

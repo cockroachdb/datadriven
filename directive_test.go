@@ -55,17 +55,6 @@ a=true b=false has-c=true
 	})
 }
 
-func TestFlagNames(t *testing.T) {
-	RunTestFromString(t, `
-cmd -b x -a=1 -- -c
-----
-[b a]
-`, func(t *T, d *TestData) string {
-		d.MarkAllFlagsProcessed()
-		return fmt.Sprint(d.FlagNames())
-	})
-}
-
 func TestFlagValueErrors(t *testing.T) {
 	testCases := []struct {
 		directive string
@@ -187,8 +176,8 @@ func TestFlagProcessing(t *testing.T) {
 			name:  "iterate",
 			input: "cmd -a -b=1\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				for _, name := range d.FlagNames() {
-					d.MarkFlagProcessed(name)
+				for _, f := range d.Flags {
+					d.MarkFlagProcessed(f.Name)
 				}
 				return ""
 			},
@@ -281,17 +270,19 @@ func TestFlagProcessing(t *testing.T) {
 			expected: []string{"<string>:1: cannot parse directive at column 10 (flag -x is repeated): cmd -x=1 -x=2"},
 		},
 		{
-			// Only the flags on the directive line are checked (not the flags of a
-			// line parsed by the test).
-			name:  "parse-line",
-			input: "cmd -a\n----\n",
+			// The flags on the directive line must be processed, even if the test
+			// changes Flags (e.g. parses the input lines into it).
+			name:  "changed",
+			input: "cmd -a -b=1\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				d.HasFlag("a")
-				if _, err := ParseLine("sub -b"); err != nil {
+				d.HasFlag("b")
+				var err error
+				if d.Cmd, d.Flags, d.Args, err = ParseLine("x -c"); err != nil {
 					t.Fatal(err)
 				}
 				return ""
 			},
+			expected: []string{"<string>:1: unprocessed flags: -a"},
 		},
 		{
 			name:     "subtest-with-flags",
@@ -310,5 +301,21 @@ func TestFlagProcessing(t *testing.T) {
 				t.Fatalf("expected:\n  %s\ngot:\n  %s", strings.Join(tc.expected, "\n  "), strings.Join(rec.msgs, "\n  "))
 			}
 		})
+	}
+}
+
+// TestManualFlag verifies that a Flag constructed manually with an empty
+// (non-nil) Vals behaves like a flag without a value.
+func TestManualFlag(t *testing.T) {
+	f := Flag{Name: "x", Vals: []string{}}
+	if s := f.String(); s != "-x" {
+		t.Fatalf("unexpected String: %q", s)
+	}
+	td := &TestData{Cmd: "cmd", Flags: []Flag{f}, T: t}
+	if !td.BoolFlag("x") {
+		t.Fatalf("BoolFlag returned false")
+	}
+	if s := td.FullCmd(); s != "cmd -x" {
+		t.Fatalf("unexpected FullCmd: %q", s)
 	}
 }
