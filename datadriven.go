@@ -624,7 +624,7 @@ func (p Pos) String() string {
 
 // InputLines returns an iterator over the lines of Input, along with their
 // positions in the test file. While the body of the loop runs, messages
-// reported through T (including by FlagValue or TestData methods like Fatalf)
+// reported through T (including by TestData methods like FlagValue or Fatalf)
 // are annotated with the position of the current line, instead of that of the
 // directive. This is useful for directives whose input contains a sequence of
 // commands; for example:
@@ -635,7 +635,7 @@ func (p Pos) String() string {
 //			td.Fatalf("%v", err) // Reports the position of the line.
 //		}
 //		sub := &datadriven.TestData{Cmd: cmd, Flags: flags, Args: args, T: td.T}
-//		n := datadriven.FlagValue[int](sub, "n") // So do errors here.
+//		n := sub.FlagValue[int]("n") // So do errors here.
 //		...
 //	}
 //

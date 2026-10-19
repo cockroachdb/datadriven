@@ -36,7 +36,7 @@ func popHandler(t testing.TB, d *TestData) string {
 	case "pop-then-flag":
 		// The positional argument has the same name as the flag.
 		fmt.Fprintf(&buf, "popped %q\n", d.PopArg())
-		fmt.Fprintf(&buf, "x=%d\n", FlagValue[int](d, "x"))
+		fmt.Fprintf(&buf, "x=%d\n", d.FlagValue[int]("x"))
 	default:
 		t.Fatalf("unknown command %s", d.Cmd)
 	}

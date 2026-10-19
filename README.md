@@ -17,8 +17,8 @@ func TestAdd(t *testing.T) {
 	datadriven.RunTest(t, "testdata/add", func(t *datadriven.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "add":
-			a := datadriven.FlagValue[int](td, "a")
-			b := datadriven.FlagValueOr(td, "b", 1)
+			a := td.FlagValue[int]("a")
+			b := td.FlagValueOr("b", 1)
 			return fmt.Sprint(a + b)
 		default:
 			t.Fatalf("unknown command %q", td.Cmd)

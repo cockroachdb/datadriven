@@ -42,11 +42,11 @@ a=true b=false has-c=true
 		switch d.Cmd {
 		case "values":
 			return fmt.Sprintf("n=%d names=%#v name=%#v d=%s nm=%d b=%t empty=%#v s=%q one=%#v",
-				FlagValue[int](d, "n"), FlagValue[[]string](d, "names"), FlagValue[[]string](d, "name"),
-				FlagValue[time.Duration](d, "d"), FlagValue[namedInt](d, "nm"), FlagValue[bool](d, "b"),
-				FlagValue[[]string](d, "empty"), FlagValue[string](d, "s"), FlagValue[[]string](d, "one"))
+				d.FlagValue[int]("n"), d.FlagValue[[]string]("names"), d.FlagValue[[]string]("name"),
+				d.FlagValue[time.Duration]("d"), d.FlagValue[namedInt]("nm"), d.FlagValue[bool]("b"),
+				d.FlagValue[[]string]("empty"), d.FlagValue[string]("s"), d.FlagValue[[]string]("one"))
 		case "or":
-			return fmt.Sprintf("n=%d m=%d", FlagValueOr(d, "n", 1), FlagValueOr(d, "m", 10))
+			return fmt.Sprintf("n=%d m=%d", d.FlagValueOr("n", 1), d.FlagValueOr("m", 10))
 		case "bool":
 			return fmt.Sprintf("a=%t b=%t has-c=%t", d.BoolFlag("a"), d.BoolFlag("b"), d.HasFlag("c"))
 		}
@@ -61,47 +61,47 @@ func TestFlagValueErrors(t *testing.T) {
 		f         func(d *TestData)
 		expected  string
 	}{
-		{"cmd", func(d *TestData) { FlagValue[int](d, "n") }, "<string>:1: missing flag: -n"},
+		{"cmd", func(d *TestData) { d.FlagValue[int]("n") }, "<string>:1: missing flag: -n"},
 		{
-			"cmd -n=x", func(d *TestData) { FlagValue[int](d, "n") },
+			"cmd -n=x", func(d *TestData) { d.FlagValue[int]("n") },
 			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
-		{"cmd -n", func(d *TestData) { FlagValue[int](d, "n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
-		{"cmd -n", func(d *TestData) { FlagValue[[]int](d, "n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		{"cmd -n", func(d *TestData) { d.FlagValue[int]("n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		{"cmd -n", func(d *TestData) { d.FlagValue[[]int]("n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
 		{
-			"cmd -n=(1,2)", func(d *TestData) { FlagValue[int](d, "n") },
+			"cmd -n=(1,2)", func(d *TestData) { d.FlagValue[int]("n") },
 			`<string>:1: flag -n: the value is a list; use a slice type`,
 		},
 		{
 			// A list with one element is still a list.
-			"cmd -n=(5)", func(d *TestData) { FlagValue[int](d, "n") },
+			"cmd -n=(5)", func(d *TestData) { d.FlagValue[int]("n") },
 			`<string>:1: flag -n: the value is a list; use a slice type`,
 		},
 		{
-			"cmd -n=(1,x)", func(d *TestData) { FlagValue[[]int](d, "n") },
+			"cmd -n=(1,x)", func(d *TestData) { d.FlagValue[[]int]("n") },
 			`<string>:1: flag -n: value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{
-			"cmd -n=x", func(d *TestData) { FlagValue[[]int](d, "n") },
+			"cmd -n=x", func(d *TestData) { d.FlagValue[[]int]("n") },
 			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{
-			"cmd -n=1", func(d *TestData) { FlagValue[struct{}](d, "n") },
+			"cmd -n=1", func(d *TestData) { d.FlagValue[struct{}]("n") },
 			`<string>:1: flag -n: unsupported destination type struct {}`,
 		},
 		{
-			"cmd -b=yes", func(d *TestData) { FlagValue[bool](d, "b") },
+			"cmd -b=yes", func(d *TestData) { d.FlagValue[bool]("b") },
 			`<string>:1: flag -b: strconv.ParseBool: parsing "yes": invalid syntax`,
 		},
 		{
-			"cmd -d=5", func(d *TestData) { FlagValue[time.Duration](d, "d") },
+			"cmd -d=5", func(d *TestData) { d.FlagValue[time.Duration]("d") },
 			`<string>:1: flag -d: time: missing unit in duration "5"`,
 		},
 		{
-			"cmd -n=x", func(d *TestData) { FlagValueOr(d, "n", 1) },
+			"cmd -n=x", func(d *TestData) { d.FlagValueOr("n", 1) },
 			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
-		{"cmd -n", func(d *TestData) { FlagValueOr(d, "n", 1) }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		{"cmd -n", func(d *TestData) { d.FlagValueOr("n", 1) }, `<string>:1: flag -n: no value (see BoolFlag)`},
 		{"cmd -a=1", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=1`},
 		{"cmd -a=", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=`},
 		{"cmd -a=()", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=()`},
@@ -161,12 +161,12 @@ func TestFlagProcessing(t *testing.T) {
 			input: "cmd -a -b=1 -c=2 -d=(3, 4) -e\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
 				d.HasFlag("a")
-				FlagValue[int](d, "b")
-				FlagValueOr(d, "c", 0)
-				FlagValue[[]int](d, "d")
+				d.FlagValue[int]("b")
+				d.FlagValueOr("c", 0)
+				d.FlagValue[[]int]("d")
 				d.BoolFlag("e")
 				// Looking up a flag that doesn't exist is fine.
-				FlagValueOr(d, "f", 0)
+				d.FlagValueOr("f", 0)
 				d.BoolFlag("g")
 				d.HasFlag("h")
 				return ""
@@ -197,7 +197,7 @@ func TestFlagProcessing(t *testing.T) {
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
 				cp := *d
 				cp.HasFlag("a")
-				FlagValue[int](&cp, "b")
+				cp.FlagValue[int]("b")
 				return ""
 			},
 		},

@@ -54,14 +54,14 @@ perl -pi -e 's/func\((\w+) \*testing\.T, (\w+) \*datadriven\.TestData\) (string|
 # TestData methods no longer take a testing.TB, and arguments are now flags;
 # TestData.Logf is removed. A MaybeScanArgs statement with one destination
 # becomes FlagValueOr (with the current value as the default).
-perl -pi -e 's/^(\s*)(d|td)\.MaybeScanArgs\((t|b|tb), ("[^"]*"), &([\w.]+)\)$/$1$5 = datadriven.FlagValueOr($2, $4, $5)/; s/\b(d|td)\.(Fatalf|Retry|RetryFor)\((t|b|tb), /$1.$2(/g; s/\b(d|td)\.Logf\((t|b|tb), /$2.Logf(/g; s/\b(d|td)\.HasArg\(/$1.HasFlag(/g' $FILES
+perl -pi -e 's/^(\s*)(d|td)\.MaybeScanArgs\((t|b|tb), ("[^"]*"), &([\w.]+)\)$/$1$5 = $2.FlagValueOr($4, $5)/; s/\b(d|td)\.(Fatalf|Retry|RetryFor)\((t|b|tb), /$1.$2(/g; s/\b(d|td)\.Logf\((t|b|tb), /$2.Logf(/g; s/\b(d|td)\.HasArg\(/$1.HasFlag(/g' $FILES
 
 # Helpers that take a *testing.T along with a TestData can take a testing.TB.
 perl -pi -e 's/^(func \w+\(\w+) \*testing\.T(, \w+ \*datadriven\.TestData)/$1 testing.TB$2/' $FILES
 
 # CockroachDB: dd.ScanArg and dd.ScanArgOr (pkg/testutils/dd) are replaced by
 # FlagValue and FlagValueOr.
-perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValue/g; s/\bdd\.(FlagValue|FlagValueOr)(\[(?:[^\[\]]|\[[^\[\]]*\])*\])?\((t|b|tb), /datadriven.$1$2(/g' $FILES
+perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValue/g; s/\bdd\.(FlagValue|FlagValueOr)(\[(?:[^\[\]]|\[[^\[\]]*\])*\])?\((t|b|tb), (\w+), /$4.$1$2(/g' $FILES
 ```
 
 ## Other changes
@@ -82,11 +82,11 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   position of a line within the input, iterate with `d.InputLines()`.
 - **Flags and arguments.** `TestData.CmdArgs` is replaced by `Flags` (of type
   `Flag`, which replaces `CmdArg`, with `Name`, `Vals` and `List`) and `Args`
-  (the positional arguments, as strings). Flags are usually accessed by name. The value of a flag is retrieved with
-  `datadriven.FlagValue[T](d, "x")` (which replaces the
-  `var x T; d.ScanArgs("x", &x)` pattern; the type can't be inferred, so this
-  isn't done by the rewrites above) or `datadriven.FlagValueOr(d, "x", def)`; a
-  list value is retrieved as a slice. `d.HasFlag` replaces `d.HasArg`, and
+  (the positional arguments, as strings). Flags are usually accessed by name:
+  the value of a flag is retrieved with `d.FlagValue[T]("x")` (which replaces
+  the `var x T; d.ScanArgs("x", &x)` pattern; the type can't be inferred, so
+  this isn't done by the rewrites above) or `d.FlagValueOr("x", def)`; a list
+  value is retrieved as a slice. `d.HasFlag` replaces `d.HasArg`, and
   `d.BoolFlag` checks for a flag without a value (e.g. `-verbose`). The other
   scanning methods (`Arg`, multiple-destination `ScanArgs`, `CmdArg.Scan`,
   `FirstVal`, etc.) are removed. Positional arguments can be retrieved with

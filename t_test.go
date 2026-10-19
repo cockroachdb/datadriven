@@ -259,7 +259,7 @@ func TestAnnotations(t *testing.T) {
 		case "td-fatalf":
 			d.Fatalf("td-fatalf %d", 1)
 		case "scan":
-			FlagValue[int](d, "x")
+			d.FlagValue[int]("x")
 		case "bool-flag":
 			d.BoolFlag("a")
 		case "cleanup":
@@ -428,12 +428,12 @@ func TestTOutput(t *testing.T) {
 		{"skipf-nl", func(t *T, d *TestData) { t.Skipf("skipf-nl %d\n", 1) }, "skipf-nl 1"},
 		{"tb-helper", func(t *T, d *TestData) { tbHelperErrorf(t, "tb-helper %d", 1) }, "tb-helper 1"},
 		{"t-helper", func(t *T, d *TestData) { tHelperErrorf(t, "t-helper %d", 1) }, "t-helper 1"},
-		{"flag-value", func(t *T, d *TestData) { FlagValue[int](d, "flag-value") }, "missing flag: -flag-value"},
+		{"flag-value", func(t *T, d *TestData) { d.FlagValue[int]("flag-value") }, "missing flag: -flag-value"},
 		{
 			"flag-value-or",
 			func(t *T, d *TestData) {
 				d.Flags = []Flag{{Name: "or", Vals: []string{"foo"}}}
-				FlagValueOr(d, "or", 1)
+				d.FlagValueOr("or", 1)
 			},
 			`flag -or: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
 		},
@@ -448,7 +448,7 @@ func TestTOutput(t *testing.T) {
 		// The position is not added again if the message already starts with it.
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
-		{"td-flag-value", func(t *T, d *TestData) { FlagValue[int](d, "x") }, "missing flag: -x"},
+		{"td-flag-value", func(t *T, d *TestData) { d.FlagValue[int]("x") }, "missing flag: -x"},
 	}
 
 	if os.Getenv(tOutputChildEnv) != "" {

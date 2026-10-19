@@ -68,8 +68,8 @@
 //			datadriven.RunTest(t, path, func(t *datadriven.T, td *datadriven.TestData) string {
 //				switch td.Cmd {
 //				case "add":
-//					a := datadriven.FlagValue[int](td, "a")
-//					b := datadriven.FlagValueOr(td, "b", 1)
+//					a := td.FlagValue[int]("a")
+//					b := td.FlagValueOr("b", 1)
 //					return fmt.Sprint(a + b)
 //				default:
 //					t.Fatalf("unknown command %q", td.Cmd)
@@ -92,8 +92,8 @@
 // The function receives a wrapper of the testing.TB (*T for a *testing.T, *B
 // for a *testing.B; see TBWrapper) which annotates messages with the position
 // of the directive in the test file. The same wrapper is available as
-// TestData.T and is used by the functions and methods that can fail the test
-// (e.g. FlagValue).
+// TestData.T and is used by the TestData methods that can fail the test (e.g.
+// FlagValue).
 //
 // The flags are retrieved by name: HasFlag and BoolFlag check for flags
 // without values (e.g. -verbose), and FlagValue and FlagValueOr parse the value

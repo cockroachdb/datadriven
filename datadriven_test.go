@@ -173,7 +173,7 @@ func TestRetry(t *testing.T) {
 	RunTest(t, "testdata/retry", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "inc":
-			n := FlagValueOr(d, "n", 1)
+			n := d.FlagValueOr("n", 1)
 			for i := 0; i < n; i++ {
 				go func() {
 					time.Sleep(time.Duration(rand.Intn(10)) * time.Microsecond)
@@ -327,16 +327,16 @@ cmd
 ----
 "default"
 `, func(t *T, d *TestData) string {
-		return fmt.Sprintf("%q", FlagValueOr(d, "vals", "default"))
+		return fmt.Sprintf("%q", d.FlagValueOr("vals", "default"))
 	})
 }
 
-// checkFlagValue returns FlagValue[V](d, "vals"), after checking that
+// checkFlagValue returns d.FlagValue[V]("vals"), after checking that
 // FlagValueOr returns the same.
 func checkFlagValue[V any](d *TestData) V {
-	v1 := FlagValue[V](d, "vals")
+	v1 := d.FlagValue[V]("vals")
 	var def V
-	if v2 := FlagValueOr(d, "vals", def); !reflect.DeepEqual(v1, v2) {
+	if v2 := d.FlagValueOr("vals", def); !reflect.DeepEqual(v1, v2) {
 		d.T.Fatalf("FlagValue and FlagValueOr returned %#v and %#v", v1, v2)
 	}
 	return v1
@@ -451,7 +451,7 @@ func TestTestDataWithoutT(t *testing.T) {
 	}()
 	td := TestData{Cmd: "cmd"}
 	var x int
-	FlagValueOr(&td, "x", x)
+	td.FlagValueOr("x", x)
 }
 
 // END: TestData.T required

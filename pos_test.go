@@ -144,7 +144,7 @@ func TestInputLinesAnnotations(t *testing.T) {
 						d.Fatalf("%v", err)
 					}
 					sub := &TestData{Cmd: cmd, Flags: flags, Args: args, T: d.T}
-					FlagValue[int](sub, "x")
+					sub.FlagValue[int]("x")
 				}
 			},
 			expected: []string{"<string>:3: missing flag: -x"},

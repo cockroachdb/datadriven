@@ -89,10 +89,10 @@ func (td *TestData) BoolFlag(name string) bool {
 //
 // the following would be valid:
 //
-//	n := datadriven.FlagValue[int](td, "n")
-//	names := datadriven.FlagValue[[]string](td, "names") // [a b]
-//	name := datadriven.FlagValue[[]string](td, "name") // [c]
-//	d := datadriven.FlagValue[time.Duration](td, "d")
+//	n := td.FlagValue[int]("n")
+//	names := td.FlagValue[[]string]("names") // [a b]
+//	name := td.FlagValue[[]string]("name") // [c]
+//	d := td.FlagValue[time.Duration]("d")
 //
 // V must be one of: string, bool, integer and floating point types, named types
 // with one of these as the underlying type, time.Duration (but not named types
@@ -103,9 +103,7 @@ func (td *TestData) BoolFlag(name string) bool {
 //
 // It is a fatal error if the flag doesn't exist, if it doesn't have a value
 // (see BoolFlag), or if the value can't be parsed as a V.
-//
-// (FlagValue is a function because Go methods can't have type parameters.)
-func FlagValue[V any](td *TestData, name string) V {
+func (td *TestData) FlagValue[V any](name string) V {
 	t := td.tb()
 	t.Helper()
 	td.MarkFlagProcessed(name)
@@ -121,7 +119,7 @@ func FlagValue[V any](td *TestData, name string) V {
 }
 
 // FlagValueOr is like FlagValue, but returns def if the flag doesn't exist.
-func FlagValueOr[V any](td *TestData, name string, def V) V {
+func (td *TestData) FlagValueOr[V any](name string, def V) V {
 	t := td.tb()
 	t.Helper()
 	td.MarkFlagProcessed(name)
