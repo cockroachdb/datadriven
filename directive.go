@@ -204,9 +204,9 @@ func (p *processedFlags) unprocessed(flags []Flag) []string {
 	return res
 }
 
-// MaybeScanFlagInto is like ScanFlagInto, except that if the flag does not
+// MaybeScanFlagVals is like ScanFlagVals, except that if the flag does not
 // exist it leaves the destinations unmodified and returns false.
-func (td *TestData) MaybeScanFlagInto(name string, dests ...any) bool {
+func (td *TestData) MaybeScanFlagVals(name string, dests ...any) bool {
 	t := td.tb()
 	t.Helper()
 	f, ok := td.Flag(name)
@@ -216,7 +216,7 @@ func (td *TestData) MaybeScanFlagInto(name string, dests ...any) bool {
 	return ok
 }
 
-// ScanFlagInto scans the values of a flag into the given destinations, and
+// ScanFlagVals scans the values of a flag into the given destinations, and
 // marks the flag as processed. It is a fatal error if the flag does not exist
 // or is repeated, if the number of destinations does not match that of the
 // values, or if a value can't be parsed. For example, for
@@ -229,11 +229,11 @@ func (td *TestData) MaybeScanFlagInto(name string, dests ...any) bool {
 //	var s string
 //	var l []int
 //	var b bool
-//	td.ScanFlagInto("f1", &i1)
-//	td.ScanFlagInto("f2", &s)
-//	td.ScanFlagInto("f3", &i2, &i3, &i4)
-//	td.ScanFlagInto("f3", &l)
-//	td.ScanFlagInto("f4", &b) // true
+//	td.ScanFlagVals("f1", &i1)
+//	td.ScanFlagVals("f2", &s)
+//	td.ScanFlagVals("f3", &i2, &i3, &i4)
+//	td.ScanFlagVals("f3", &l)
+//	td.ScanFlagVals("f4", &b) // true
 //
 // The destinations must be pointers to one of: string, bool, integer and
 // floating point types, named types with one of these as the underlying type,
@@ -243,7 +243,7 @@ func (td *TestData) MaybeScanFlagInto(name string, dests ...any) bool {
 // into a bool, as true.
 //
 // See also ScanFlag, ScanFlagOr and MaybeScanFlag.
-func (td *TestData) ScanFlagInto(name string, dests ...any) {
+func (td *TestData) ScanFlagVals(name string, dests ...any) {
 	t := td.tb()
 	t.Helper()
 	f, ok := td.Flag(name)
@@ -254,7 +254,7 @@ func (td *TestData) ScanFlagInto(name string, dests ...any) {
 }
 
 // ScanFlag returns the value of a flag scanned into a V (which can be any type
-// supported by ScanFlagInto, including slices), and marks the flag as
+// supported by ScanFlagVals, including slices), and marks the flag as
 // processed. It is a fatal error if the flag doesn't exist or is repeated, or
 // if it can't be scanned. For example, for
 //
@@ -270,7 +270,7 @@ func (td *TestData) ScanFlagInto(name string, dests ...any) {
 func ScanFlag[V any](td *TestData, name string) V {
 	td.tb().Helper()
 	var v V
-	td.ScanFlagInto(name, &v)
+	td.ScanFlagVals(name, &v)
 	return v
 }
 
@@ -288,7 +288,7 @@ func ScanFlagOr[V any](td *TestData, name string, def V) V {
 func MaybeScanFlag[V any](td *TestData, name string) (V, bool) {
 	td.tb().Helper()
 	var v V
-	ok := td.MaybeScanFlagInto(name, &v)
+	ok := td.MaybeScanFlagVals(name, &v)
 	return v, ok
 }
 
@@ -352,7 +352,7 @@ func (f Flag) scan(t testing.TB, dests ...any) {
 	// Multiple destinations provided; update each corresponding destination to
 	// support invocations of the form:
 	//
-	//   td.ScanFlagInto("f3", &i2, &i3, &i4)
+	//   td.ScanFlagVals("f3", &i2, &i3, &i4)
 	//
 	if len(dests) != len(f.Vals) {
 		t.Fatalf("flag -%s: %d destinations, but %d values", f.Name, len(dests), len(f.Vals))

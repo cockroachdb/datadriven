@@ -46,7 +46,7 @@ perl -pi -e 's/func\((\w+) \*testing\.T, (\w+) \*datadriven\.TestData\) (string|
 
 # TestData methods no longer take a testing.TB, and arguments are now flags;
 # TestData.Logf is removed.
-perl -pi -e 's/\b(d|td)\.ScanArgs\((t|b|tb), /$1.ScanFlagInto(/g; s/\b(d|td)\.MaybeScanArgs\((t|b|tb), /$1.MaybeScanFlagInto(/g; s/\b(d|td)\.(Fatalf|Retry|RetryFor)\((t|b|tb), /$1.$2(/g; s/\b(d|td)\.Logf\((t|b|tb), /$2.Logf(/g; s/\b(d|td)\.HasArg\(/$1.HasFlag(/g; s/\b(d|td)\.Arg\(/$1.Flag(/g' $FILES
+perl -pi -e 's/\b(d|td)\.ScanArgs\((t|b|tb), /$1.ScanFlagVals(/g; s/\b(d|td)\.MaybeScanArgs\((t|b|tb), /$1.MaybeScanFlagVals(/g; s/\b(d|td)\.(Fatalf|Retry|RetryFor)\((t|b|tb), /$1.$2(/g; s/\b(d|td)\.Logf\((t|b|tb), /$2.Logf(/g; s/\b(d|td)\.HasArg\(/$1.HasFlag(/g; s/\b(d|td)\.Arg\(/$1.Flag(/g' $FILES
 
 # Helpers that take a *testing.T along with a TestData can take a testing.TB.
 perl -pi -e 's/^(func \w+\(\w+) \*testing\.T(, \w+ \*datadriven\.TestData)/$1 testing.TB$2/' $FILES
@@ -77,7 +77,7 @@ perl -pi -e 's/\bdd\.ScanArgOpt\b/dd.MaybeScanFlag/g; s/\bdd\.ScanArgOr\b/dd.Sca
   `MaybeScanFlag` replace the `var x T; d.ScanArgs("x", &x)` pattern; repeated
   flags (e.g. `-x=1 -x=2`) are retrieved with `FlagValues` or
   `ScanFlagValues`. Note that in v1, `ScanArgs`, `Arg` and `HasArg` used the
-  first occurrence of a repeated key; in v2, `Flag`, `ScanFlagInto` and the
+  first occurrence of a repeated key; in v2, `Flag`, `ScanFlagVals` and the
   `ScanFlag` functions fail if the flag is repeated, so code that appends
   default flags to override them must remove the duplicates. A flag without values (e.g. `-verbose`) can be scanned
   into a bool, as true. Positional arguments can be retrieved with `PopArg`.

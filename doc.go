@@ -91,10 +91,10 @@
 // for a *testing.B; see TBWrapper) which annotates messages with the position
 // of the directive in the test file. The same wrapper is available as
 // TestData.T and is used by the TestData methods that can fail the test (e.g.
-// ScanFlagInto).
+// ScanFlagVals).
 //
 // The flags are retrieved by name (HasFlag, ScanFlag, ScanFlagOr,
-// MaybeScanFlag, ScanFlagInto, FlagValues), and the positional arguments
+// MaybeScanFlag, ScanFlagVals, FlagValues), and the positional arguments
 // through TestData.Args (or PopArg). All the flags must be processed
 // by the test (so that e.g. a misspelled flag doesn't go unnoticed): the flags
 // that are retrieved by name are processed automatically, and the others can

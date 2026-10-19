@@ -144,7 +144,7 @@ func TestInputLinesAnnotations(t *testing.T) {
 						d.Fatalf("%v", err)
 					}
 					var x int
-					d.ScanFlagInto("x", &x)
+					d.ScanFlagVals("x", &x)
 				}
 			},
 			expected: []string{"<string>:3: missing flag: -x"},

@@ -260,7 +260,7 @@ func TestAnnotations(t *testing.T) {
 			d.Fatalf("td-fatalf %d", 1)
 		case "scan":
 			var x int
-			d.ScanFlagInto("x", &x)
+			d.ScanFlagVals("x", &x)
 		case "single-val":
 			d.Flags[0].SingleVal(d.T)
 		case "cleanup":
@@ -449,7 +449,7 @@ func TestTOutput(t *testing.T) {
 		// The position is not added again if the message already starts with it.
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
-		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanFlagInto("x", &x) }, "missing flag: -x"},
+		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanFlagVals("x", &x) }, "missing flag: -x"},
 	}
 
 	if os.Getenv(tOutputChildEnv) != "" {

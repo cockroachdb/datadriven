@@ -174,7 +174,7 @@ func TestRetry(t *testing.T) {
 		switch d.Cmd {
 		case "inc":
 			n := 1
-			d.MaybeScanFlagInto("n", &n)
+			d.MaybeScanFlagVals("n", &n)
 			for i := 0; i < n; i++ {
 				go func() {
 					time.Sleep(time.Duration(rand.Intn(10)) * time.Microsecond)
@@ -322,7 +322,7 @@ cmd
 "", "", ""
 `, func(t *T, d *TestData) string {
 		var x, y, z string
-		d.MaybeScanFlagInto("vals", &x, &y, &z)
+		d.MaybeScanFlagVals("vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
 	})
 }
@@ -334,19 +334,19 @@ cmd -vals=(foo, bar, bax)
 "foo", "bar", "bax"
 `, func(t *T, d *TestData) string {
 		var x, y, z string
-		d.ScanFlagInto("vals", &x, &y, &z)
+		d.ScanFlagVals("vals", &x, &y, &z)
 		return fmt.Sprintf("%q, %q, %q", x, y, z)
 	})
 }
 
 func TestScanFlagSingle(t *testing.T) {
 	checkScanEquivalence := func(d *TestData, dest1, dest2 any) {
-		d.ScanFlagInto("vals", dest1)
+		d.ScanFlagVals("vals", dest1)
 		if _, ok := d.Flag("vals"); !ok {
 			d.T.Fatal("`vals` flag not found by TestData.Flag")
 		}
-		if ok := d.MaybeScanFlagInto("vals", dest2); !ok {
-			d.T.Fatal("`vals` flag not found by TestData.MaybeScanFlagInto")
+		if ok := d.MaybeScanFlagVals("vals", dest2); !ok {
+			d.T.Fatal("`vals` flag not found by TestData.MaybeScanFlagVals")
 		}
 		if !reflect.DeepEqual(dest1, dest2) {
 			d.T.Fatalf("scanned values %#v and %#v are unequal", dest1, dest2)
@@ -459,7 +459,7 @@ func TestTestDataWithoutT(t *testing.T) {
 	}()
 	td := TestData{Cmd: "cmd"}
 	var x int
-	td.MaybeScanFlagInto("x", &x)
+	td.MaybeScanFlagVals("x", &x)
 }
 
 // END: TestData.T required

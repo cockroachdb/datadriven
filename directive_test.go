@@ -78,11 +78,11 @@ func TestScanErrors(t *testing.T) {
 			`<string>:1: flag -n: value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{
-			"cmd -n=(1,x)", func(d *TestData) { var a, b int; d.ScanFlagInto("n", &a, &b) },
+			"cmd -n=(1,x)", func(d *TestData) { var a, b int; d.ScanFlagVals("n", &a, &b) },
 			`<string>:1: flag -n: value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{
-			"cmd -n=(1,2)", func(d *TestData) { var a, b, c int; d.ScanFlagInto("n", &a, &b, &c) },
+			"cmd -n=(1,2)", func(d *TestData) { var a, b, c int; d.ScanFlagVals("n", &a, &b, &c) },
 			`<string>:1: flag -n: 3 destinations, but 2 values`,
 		},
 		{
@@ -181,11 +181,11 @@ func TestFlagProcessing(t *testing.T) {
 				d.HasFlag("a")
 				ScanFlag[int](d, "b")
 				ScanFlagOr(d, "c", 0)
-				d.ScanFlagInto("d", &c)
+				d.ScanFlagVals("d", &c)
 				d.Flag("e")
 				// Looking up a flag that doesn't exist is fine.
 				MaybeScanFlag[int](d, "f")
-				d.MaybeScanFlagInto("g", &e)
+				d.MaybeScanFlagVals("g", &e)
 				return ""
 			},
 		},

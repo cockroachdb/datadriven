@@ -582,7 +582,7 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// Flag, ScanFlagInto, MaybeScanFlagInto, PopArg, Retry, RetryFor,
+	// Flag, ScanFlagVals, MaybeScanFlagVals, PopArg, Retry, RetryFor,
 	// Fatalf or the ScanFlag functions.
 	T testing.TB
 
@@ -623,7 +623,7 @@ func (p Pos) String() string {
 
 // InputLines returns an iterator over the lines of Input, along with their
 // positions in the test file. While the body of the loop runs, messages
-// reported through T (including by TestData methods like ScanFlagInto or Fatalf)
+// reported through T (including by TestData methods like ScanFlagVals or Fatalf)
 // are annotated with the position of the current line, instead of that of the
 // directive. This is useful for directives whose input contains a sequence of
 // commands; for example:
