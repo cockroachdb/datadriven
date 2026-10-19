@@ -17,7 +17,7 @@ input-line-2
 # Flags are rendered before arguments, in a canonical form.
 flags that -render=(1) differently -lists=(1,2,3) -- -x
 ----
-flags -render=1 -lists=(1, 2, 3) -- that differently -x
+flags -render=(1) -lists=(1, 2, 3) -- that differently -x
 
 noinput
 ----

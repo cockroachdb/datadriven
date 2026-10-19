@@ -25,90 +25,97 @@ import (
 
 type namedInt int
 
-func TestScanFlag(t *testing.T) {
+func TestFlagValue(t *testing.T) {
 	RunTestFromString(t, `
-scan -n=5 -names=(a, b) -verbose -d=1m -nm=7 -b=false
+values -n=5 -names=(a, b) -name=c -d=1m -nm=7 -b=false -empty=() -s= -one=(x)
 ----
-n=5 names=[]string{"a", "b"} verbose=true d=1m0s nm=7 b=false
+n=5 names=[]string{"a", "b"} name=[]string{"c"} d=1m0s nm=7 b=false empty=[]string{} s="" one=[]string{"x"}
 
-scan-or -n=3
+or -n=3
 ----
-n=3 m=10 verbose=false
+n=3 m=10
 
-maybe -n=3
+bool -a -c=1
 ----
-n=3 ok=true; m=0 ok=false
+a=true b=false has-c=true
 `, func(t *T, d *TestData) string {
 		switch d.Cmd {
-		case "scan":
-			return fmt.Sprintf("n=%d names=%#v verbose=%t d=%s nm=%d b=%t",
-				ScanFlag[int](d, "n"), ScanFlag[[]string](d, "names"), ScanFlag[bool](d, "verbose"),
-				ScanFlag[time.Duration](d, "d"), ScanFlag[namedInt](d, "nm"), ScanFlag[bool](d, "b"))
-		case "scan-or":
-			return fmt.Sprintf("n=%d m=%d verbose=%t",
-				ScanFlagOr(d, "n", 1), ScanFlagOr(d, "m", 10), ScanFlagOr(d, "verbose", false))
-		case "maybe":
-			n, nOK := MaybeScanFlag[int](d, "n")
-			m, mOK := MaybeScanFlag[int](d, "m")
-			return fmt.Sprintf("n=%d ok=%t; m=%d ok=%t", n, nOK, m, mOK)
+		case "values":
+			return fmt.Sprintf("n=%d names=%#v name=%#v d=%s nm=%d b=%t empty=%#v s=%q one=%#v",
+				FlagValue[int](d, "n"), FlagValue[[]string](d, "names"), FlagValue[[]string](d, "name"),
+				FlagValue[time.Duration](d, "d"), FlagValue[namedInt](d, "nm"), FlagValue[bool](d, "b"),
+				FlagValue[[]string](d, "empty"), FlagValue[string](d, "s"), FlagValue[[]string](d, "one"))
+		case "or":
+			return fmt.Sprintf("n=%d m=%d", FlagValueOr(d, "n", 1), FlagValueOr(d, "m", 10))
+		case "bool":
+			return fmt.Sprintf("a=%t b=%t has-c=%t", d.BoolFlag("a"), d.BoolFlag("b"), d.HasFlag("c"))
 		}
 		t.Fatalf("unknown command %s", d.Cmd)
 		return ""
 	})
 }
 
-func TestScanErrors(t *testing.T) {
+func TestFlagNames(t *testing.T) {
+	RunTestFromString(t, `
+cmd -b x -a=1 -- -c
+----
+[b a]
+`, func(t *T, d *TestData) string {
+		d.MarkAllFlagsProcessed()
+		return fmt.Sprint(d.FlagNames())
+	})
+}
+
+func TestFlagValueErrors(t *testing.T) {
 	testCases := []struct {
 		directive string
 		f         func(d *TestData)
 		expected  string
 	}{
-		{"cmd", func(d *TestData) { ScanFlag[int](d, "n") }, "<string>:1: missing flag: -n"},
+		{"cmd", func(d *TestData) { FlagValue[int](d, "n") }, "<string>:1: missing flag: -n"},
 		{
-			"cmd -n=x", func(d *TestData) { ScanFlag[int](d, "n") },
+			"cmd -n=x", func(d *TestData) { FlagValue[int](d, "n") },
 			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
-		{"cmd -n", func(d *TestData) { ScanFlag[int](d, "n") }, `<string>:1: flag -n: no value`},
+		{"cmd -n", func(d *TestData) { FlagValue[int](d, "n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		{"cmd -n", func(d *TestData) { FlagValue[[]int](d, "n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
 		{
-			"cmd -n=(1,2)", func(d *TestData) { ScanFlag[int](d, "n") },
-			`<string>:1: flag -n: 2 values; scan into a slice, or pass 2 destinations`,
+			"cmd -n=(1,2)", func(d *TestData) { FlagValue[int](d, "n") },
+			`<string>:1: flag -n: the value is a list; use a slice type`,
 		},
 		{
-			"cmd -n=(1,x)", func(d *TestData) { ScanFlag[[]int](d, "n") },
+			// A list with one element is still a list.
+			"cmd -n=(5)", func(d *TestData) { FlagValue[int](d, "n") },
+			`<string>:1: flag -n: the value is a list; use a slice type`,
+		},
+		{
+			"cmd -n=(1,x)", func(d *TestData) { FlagValue[[]int](d, "n") },
 			`<string>:1: flag -n: value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{
-			"cmd -n=(1,x)", func(d *TestData) { var a, b int; d.ScanFlagVals("n", &a, &b) },
-			`<string>:1: flag -n: value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
+			"cmd -n=x", func(d *TestData) { FlagValue[[]int](d, "n") },
+			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{
-			"cmd -n=(1,2)", func(d *TestData) { var a, b, c int; d.ScanFlagVals("n", &a, &b, &c) },
-			`<string>:1: flag -n: 3 destinations, but 2 values`,
-		},
-		{
-			"cmd -n=1", func(d *TestData) { ScanFlag[struct{}](d, "n") },
+			"cmd -n=1", func(d *TestData) { FlagValue[struct{}](d, "n") },
 			`<string>:1: flag -n: unsupported destination type struct {}`,
 		},
 		{
-			// A bool with a value must be a valid bool.
-			"cmd -b=yes", func(d *TestData) { ScanFlag[bool](d, "b") },
+			"cmd -b=yes", func(d *TestData) { FlagValue[bool](d, "b") },
 			`<string>:1: flag -b: strconv.ParseBool: parsing "yes": invalid syntax`,
 		},
 		{
-			"cmd -a=(1,2)", func(d *TestData) { var x int; d.Flags[0].Scan(d.T, 2, &x) },
-			`<string>:1: flag -a: value 2: index out of range (2 values)`,
+			"cmd -d=5", func(d *TestData) { FlagValue[time.Duration](d, "d") },
+			`<string>:1: flag -d: time: missing unit in duration "5"`,
 		},
 		{
-			"cmd -a=(1,x)", func(d *TestData) { var x int; d.Flags[0].Scan(d.T, 1, &x) },
-			`<string>:1: flag -a: value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
-		},
-		{"cmd -a", func(d *TestData) { d.Flags[0].FirstVal(d.T) }, `<string>:1: flag -a requires at least 1 value, has 0`},
-		{"cmd -a=(1,2)", func(d *TestData) { d.Flags[0].SingleVal(d.T) }, `<string>:1: flag -a requires 1 values, has 2`},
-		{"cmd -a=(1,2,3)", func(d *TestData) { d.Flags[0].TwoVals(d.T) }, `<string>:1: flag -a requires 2 values, has 3`},
-		{
-			"cmd -n=x", func(d *TestData) { ScanFlagOr(d, "n", 1) },
+			"cmd -n=x", func(d *TestData) { FlagValueOr(d, "n", 1) },
 			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
+		{"cmd -n", func(d *TestData) { FlagValueOr(d, "n", 1) }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		{"cmd -a=1", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=1`},
+		{"cmd -a=", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=`},
+		{"cmd -a=()", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=()`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.directive, func(t *testing.T) {
@@ -123,19 +130,6 @@ func TestScanErrors(t *testing.T) {
 				t.Fatalf("expected:\n  %s\ngot:\n  %s", tc.expected, strings.Join(rec.msgs, "\n  "))
 			}
 		})
-	}
-}
-
-func TestFlagVals(t *testing.T) {
-	a := Flag{Name: "a", Vals: []string{"x", "y"}}
-	if v := a.FirstVal(t); v != "x" {
-		t.Fatalf("FirstVal: %q", v)
-	}
-	if v1, v2 := a.TwoVals(t); v1 != "x" || v2 != "y" {
-		t.Fatalf("TwoVals: %q %q", v1, v2)
-	}
-	if v := (Flag{Name: "b", Vals: []string{"z"}}).SingleVal(t); v != "z" {
-		t.Fatalf("SingleVal: %q", v)
 	}
 }
 
@@ -175,17 +169,17 @@ func TestFlagProcessing(t *testing.T) {
 		},
 		{
 			name:  "by-name",
-			input: "cmd -a -b=1 -c=2 -d=3 -e=(4, 5)\n----\n",
+			input: "cmd -a -b=1 -c=2 -d=(3, 4) -e\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				var c, e int
 				d.HasFlag("a")
-				ScanFlag[int](d, "b")
-				ScanFlagOr(d, "c", 0)
-				d.ScanFlagVals("d", &c)
-				d.Flag("e")
+				FlagValue[int](d, "b")
+				FlagValueOr(d, "c", 0)
+				FlagValue[[]int](d, "d")
+				d.BoolFlag("e")
 				// Looking up a flag that doesn't exist is fine.
-				MaybeScanFlag[int](d, "f")
-				d.MaybeScanFlagVals("g", &e)
+				FlagValueOr(d, "f", 0)
+				d.BoolFlag("g")
+				d.HasFlag("h")
 				return ""
 			},
 		},
@@ -193,8 +187,8 @@ func TestFlagProcessing(t *testing.T) {
 			name:  "iterate",
 			input: "cmd -a -b=1\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				for _, f := range d.Flags {
-					d.MarkFlagProcessed(f.Name)
+				for _, name := range d.FlagNames() {
+					d.MarkFlagProcessed(name)
 				}
 				return ""
 			},
@@ -208,29 +202,13 @@ func TestFlagProcessing(t *testing.T) {
 			},
 		},
 		{
-			// The flags on the directive line must be processed, even if the test
-			// changes Flags (e.g. parses the input lines into it).
-			name:  "changed",
-			input: "cmd -a -b=1\n----\n",
-			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				d.HasFlag("b")
-				var err error
-				if d.Cmd, d.Flags, d.Args, err = ParseLine("x -c"); err != nil {
-					t.Fatal(err)
-				}
-				d.HasFlag("c")
-				return ""
-			},
-			expected: []string{"<string>:1: unprocessed flags: -a"},
-		},
-		{
 			// A copy of the TestData shares the processed flags.
 			name:  "copy",
 			input: "cmd -a -b=1\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
 				cp := *d
 				cp.HasFlag("a")
-				ScanFlag[int](&cp, "b")
+				FlagValue[int](&cp, "b")
 				return ""
 			},
 		},
@@ -297,55 +275,23 @@ func TestFlagProcessing(t *testing.T) {
 			expected: []string{"<string>:1: fatal"},
 		},
 		{
-			name:  "repeated",
-			input: "cmd -x=1 -x=2\n----\n",
-			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				ScanFlag[int](d, "x")
-				return ""
-			},
-			expected: []string{"<string>:1: flag -x is repeated (see FlagValues)"},
+			name:     "repeated",
+			input:    "cmd -x=1 -x=2\n----\n",
+			f:        func(t *TBWrapper[*recorderTB], d *TestData) string { return "" },
+			expected: []string{"<string>:1: cannot parse directive at column 10 (flag -x is repeated): cmd -x=1 -x=2"},
 		},
 		{
-			name:  "repeated-has-flag",
-			input: "cmd -x=1 -x=2\n----\n",
+			// Only the flags on the directive line are checked (not the flags of a
+			// line parsed by the test).
+			name:  "parse-line",
+			input: "cmd -a\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				if !d.HasFlag("x") {
-					t.Fatalf("HasFlag returned false")
+				d.HasFlag("a")
+				if _, err := ParseLine("sub -b"); err != nil {
+					t.Fatal(err)
 				}
 				return ""
 			},
-		},
-		{
-			name:  "flag-values",
-			input: "cmd -x=1 -y -x=(2, 3) -x\n----\n",
-			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				d.HasFlag("y")
-				vals := d.FlagValues("x")
-				if expected := [][]string{{"1"}, {"2", "3"}, nil}; !reflect.DeepEqual(vals, expected) {
-					t.Fatalf("FlagValues: expected %v, got %v", expected, vals)
-				}
-				return ""
-			},
-		},
-		{
-			name:  "scan-flag-values",
-			input: "cmd -x=1 -x=(2, 3)\n----\n",
-			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				vals := ScanFlagValues[[]int](d, "x")
-				if expected := [][]int{{1}, {2, 3}}; !reflect.DeepEqual(vals, expected) {
-					t.Fatalf("ScanFlagValues: expected %v, got %v", expected, vals)
-				}
-				return ""
-			},
-		},
-		{
-			name:  "scan-flag-values-error",
-			input: "cmd -x=1 -x=y\n----\n",
-			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
-				ScanFlagValues[int](d, "x")
-				return ""
-			},
-			expected: []string{`<string>:1: flag -x: parse "y" as int: strconv.ParseInt: parsing "y": invalid syntax`},
 		},
 		{
 			name:     "subtest-with-flags",

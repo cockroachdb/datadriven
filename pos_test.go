@@ -139,12 +139,12 @@ func TestInputLinesAnnotations(t *testing.T) {
 			name: "fatal",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) {
 				for _, line := range d.InputLines() {
-					var err error
-					if d.Cmd, d.Flags, d.Args, err = ParseLine(line); err != nil {
+					sub, err := ParseLine(line)
+					if err != nil {
 						d.Fatalf("%v", err)
 					}
-					var x int
-					d.ScanFlagVals("x", &x)
+					sub.T = d.T
+					FlagValue[int](sub, "x")
 				}
 			},
 			expected: []string{"<string>:3: missing flag: -x"},

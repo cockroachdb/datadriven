@@ -30,7 +30,9 @@
 // The directive line contains a command, followed by flags and positional
 // arguments, similar to a command line: the words that start with - (or --)
 // followed by a letter are flags, and the other words (as well as all the words
-// after a -- word) are positional arguments. See ParseLine for the details.
+// after a -- word) are positional arguments. A flag can have no value, a single
+// value, or a list of values, and it can't be repeated. See ParseLine for the
+// details.
 //
 // Lines starting with # (outside of inputs and outputs) are comments; blank
 // lines between directives are ignored. A directive line can be continued on
@@ -66,8 +68,8 @@
 //			datadriven.RunTest(t, path, func(t *datadriven.T, td *datadriven.TestData) string {
 //				switch td.Cmd {
 //				case "add":
-//					a := datadriven.ScanFlag[int](td, "a")
-//					b := datadriven.ScanFlagOr(td, "b", 1)
+//					a := datadriven.FlagValue[int](td, "a")
+//					b := datadriven.FlagValueOr(td, "b", 1)
 //					return fmt.Sprint(a + b)
 //				default:
 //					t.Fatalf("unknown command %q", td.Cmd)
@@ -90,15 +92,17 @@
 // The function receives a wrapper of the testing.TB (*T for a *testing.T, *B
 // for a *testing.B; see TBWrapper) which annotates messages with the position
 // of the directive in the test file. The same wrapper is available as
-// TestData.T and is used by the TestData methods that can fail the test (e.g.
-// ScanFlagVals).
+// TestData.T and is used by the functions and methods that can fail the test
+// (e.g. FlagValue).
 //
-// The flags are retrieved by name (HasFlag, ScanFlag, ScanFlagOr,
-// MaybeScanFlag, ScanFlagVals, FlagValues), and the positional arguments
-// through TestData.Args (or PopArg). All the flags must be processed
-// by the test (so that e.g. a misspelled flag doesn't go unnoticed): the flags
-// that are retrieved by name are processed automatically, and the others can
-// be marked with MarkFlagProcessed. Otherwise, the directive fails.
+// The flags are retrieved by name: HasFlag and BoolFlag check for flags
+// without values (e.g. -verbose), and FlagValue and FlagValueOr parse the value
+// of a flag into a given type (a list value, e.g. -names=(a, b), is retrieved
+// as a slice). The positional arguments are in TestData.Args (see also PopArg).
+// All the flags must be processed by the test (so that
+// e.g. a misspelled flag doesn't go unnoticed): the flags that are retrieved by
+// name are processed automatically, and the others (see FlagNames) can be
+// marked with MarkFlagProcessed. Otherwise, the directive fails.
 //
 // # Subtests
 //

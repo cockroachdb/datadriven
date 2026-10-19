@@ -16,30 +16,51 @@ package datadriven
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-// ParseLine parses a directive line into the command, the flags and the
-// positional arguments. The words on the line are separated by whitespace,
-// except inside parentheses. After the command, words that start with "-" or
-// "--" followed by a letter are flags; other words are positional arguments,
-// as are all the words after a "--" word. A flag has one of the forms:
+// ParseLine parses a directive line into a TestData with the command (Cmd),
+// the flags and the positional arguments (Args) set; Input and Expected are
+// empty. T must be set before using the methods that can fail the test (e.g.
+// FlagValue); the flags of a TestData returned by ParseLine are not required to
+// be processed. An empty line results in an empty Cmd.
 //
-//	-name             # No values.
+// The words on the line are separated by whitespace, except inside
+// parentheses. After the command, words that start with "-" or "--" followed
+// by a letter are flags; other words are positional arguments, as are all the
+// words after a "--" word. A flag has one of the forms:
+//
+//	-name             # No value.
 //	-name=value       # Single value.
-//	-name=(v1, v2)    # Multiple values.
+//	-name=(v1, v2)    # List of values (possibly empty).
 //
 // Values can contain parentheses (including whitespace and commas inside
-// them); only top-level commas separate the values in the last form. For
+// them); a value is a list if it is a single parenthesized group, and only the
+// top-level commas inside it separate the values. A flag can't be repeated. For
 // example:
 //
 //	cmd -exprs=(a + (b + c), d + f) -f=g(x, y) arg1 (an arg) -- -arg3
 //
-// has flags -exprs (with values "a + (b + c)" and "d + f") and -f (with value
-// "g(x, y)"), and the arguments "arg1", "(an arg)" and "-arg3".
-func ParseLine(line string) (cmd string, flags []Flag, args []string, err error) {
+// has flags -exprs (with the list of values "a + (b + c)" and "d + f") and -f
+// (with value "g(x, y)"), and the arguments "arg1", "(an arg)" and "-arg3".
+func ParseLine(line string) (*TestData, error) {
+	cmd, flags, args, err := parseLine(line)
+	if err != nil {
+		return nil, err
+	}
+	return &TestData{
+		Cmd:       cmd,
+		Args:      args,
+		flags:     flags,
+		directive: strings.TrimSpace(line),
+	}, nil
+}
+
+// parseLine implements ParseLine.
+func parseLine(line string) (cmd string, flags []directiveFlag, args []string, err error) {
 	line = strings.TrimSpace(line)
 	words, err := splitWords(line)
 	if err != nil {
@@ -62,6 +83,9 @@ func ParseLine(line string) (cmd string, flags []Flag, args []string, err error)
 				f, err := parseFlag(w.s)
 				if err != nil {
 					return "", nil, nil, parseError(line, w.col, err.Error())
+				}
+				if slices.ContainsFunc(flags, func(g directiveFlag) bool { return g.name == f.name }) {
+					return "", nil, nil, parseError(line, w.col, fmt.Sprintf("flag -%s is repeated", f.name))
 				}
 				flags = append(flags, f)
 				continue
@@ -127,20 +151,22 @@ func isFlag(w string) bool {
 }
 
 // parseFlag parses a word for which isFlag is true.
-func parseFlag(w string) (Flag, error) {
+func parseFlag(w string) (directiveFlag, error) {
 	w = strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-")
 	name, val, hasVal := strings.Cut(w, "=")
 	if strings.ContainsAny(name, "()") {
-		return Flag{}, fmt.Errorf("invalid flag name %q", name)
+		return directiveFlag{}, fmt.Errorf("invalid flag name %q", name)
 	}
-	f := Flag{Name: name}
-	if !hasVal {
-		return f, nil
-	}
-	if len(val) > 0 && val[0] == '(' && matchingParen(val) == len(val)-1 {
-		f.Vals = splitValues(val[1 : len(val)-1])
-	} else {
-		f.Vals = []string{val}
+	f := directiveFlag{name: name}
+	switch {
+	case !hasVal:
+	case len(val) > 0 && val[0] == '(' && matchingParen(val) == len(val)-1:
+		f.list = true
+		if inner := strings.TrimSpace(val[1 : len(val)-1]); inner != "" {
+			f.vals = splitValues(inner)
+		}
+	default:
+		f.vals = []string{val}
 	}
 	return f, nil
 }

@@ -259,10 +259,9 @@ func TestAnnotations(t *testing.T) {
 		case "td-fatalf":
 			d.Fatalf("td-fatalf %d", 1)
 		case "scan":
-			var x int
-			d.ScanFlagVals("x", &x)
-		case "single-val":
-			d.Flags[0].SingleVal(d.T)
+			FlagValue[int](d, "x")
+		case "bool-flag":
+			d.BoolFlag("a")
 		case "cleanup":
 			pos := d.Pos
 			t.Cleanup(func() { t.Logf("cleanup from %s", pos) })
@@ -325,8 +324,8 @@ func TestAnnotations(t *testing.T) {
 			},
 		},
 		{
-			cmds:     "single-val -a=(1,2)",
-			expected: []string{`<string>:1: flag -a requires 1 values, has 2`},
+			cmds:     "bool-flag -a=(1,2)",
+			expected: []string{`<string>:1: flag -a must not have a value: -a=(1, 2)`},
 		},
 		{cmds: "ok\nok\nlogf\nerrorf", expected: []string{"<string>:7: logf 1", "<string>:10: errorf 1"}},
 		{cmds: "ok\nnested", expected: []string{"<string>:3: errorf 1"}},
@@ -429,27 +428,27 @@ func TestTOutput(t *testing.T) {
 		{"skipf-nl", func(t *T, d *TestData) { t.Skipf("skipf-nl %d\n", 1) }, "skipf-nl 1"},
 		{"tb-helper", func(t *T, d *TestData) { tbHelperErrorf(t, "tb-helper %d", 1) }, "tb-helper 1"},
 		{"t-helper", func(t *T, d *TestData) { tHelperErrorf(t, "t-helper %d", 1) }, "t-helper 1"},
-		{"scan-flag", func(t *T, d *TestData) { ScanFlag[int](d, "scan-flag") }, "missing flag: -scan-flag"},
+		{"flag-value", func(t *T, d *TestData) { FlagValue[int](d, "flag-value") }, "missing flag: -flag-value"},
 		{
-			"scan-flag-or",
+			"flag-value-or",
 			func(t *T, d *TestData) {
-				d.Flags = []Flag{{Name: "or", Vals: []string{"foo"}}}
-				ScanFlagOr(d, "or", 1)
+				d.flags = []directiveFlag{{name: "or", vals: []string{"foo"}}}
+				FlagValueOr(d, "or", 1)
 			},
 			`flag -or: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
 		},
 		{
-			"maybe-scan-flag",
+			"bool-flag",
 			func(t *T, d *TestData) {
-				d.Flags = []Flag{{Name: "maybe", Vals: []string{"foo"}}}
-				MaybeScanFlag[int](d, "maybe")
+				d.flags = []directiveFlag{{name: "b", vals: []string{"x"}}}
+				d.BoolFlag("b")
 			},
-			`flag -maybe: parse "foo" as int: strconv.ParseInt: parsing "foo": invalid syntax`,
+			`flag -b must not have a value: -b=x`,
 		},
 		// The position is not added again if the message already starts with it.
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
-		{"td-scan", func(t *T, d *TestData) { var x int; d.ScanFlagVals("x", &x) }, "missing flag: -x"},
+		{"td-flag-value", func(t *T, d *TestData) { FlagValue[int](d, "x") }, "missing flag: -x"},
 	}
 
 	if os.Getenv(tOutputChildEnv) != "" {

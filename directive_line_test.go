@@ -37,9 +37,8 @@ wrong
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}
 			d.MarkAllFlagsProcessed()
-			d.Flags = d.Flags[1:]
 			d.Args = nil
-			if d.FullCmd() != "cmd -c=3" {
+			if d.FullCmd() != "cmd -a=(1, 2) -c=3" {
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}
 			return "right"
@@ -60,8 +59,17 @@ wrong
 	}
 
 	// A manually constructed TestData falls back to FullCmd.
-	td := TestData{Cmd: "cmd", Flags: []Flag{{Name: "a"}}, Args: []string{"b"}, Input: "x"}
-	if s := td.origString(); s != "cmd -a b\nx\n" {
+	td := TestData{Cmd: "cmd", Args: []string{"b"}, Input: "x"}
+	if s := td.origString(); s != "cmd b\nx\n" {
+		t.Fatalf("unexpected origString: %q", s)
+	}
+	// A TestData returned by ParseLine has the original line.
+	p, err := ParseLine("  cmd  -a=(1,2) b ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Input = "x"
+	if s := p.origString(); s != "cmd  -a=(1,2) b\nx\n" {
 		t.Fatalf("unexpected origString: %q", s)
 	}
 }
