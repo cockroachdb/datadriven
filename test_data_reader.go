@@ -24,7 +24,6 @@ import (
 
 type testDataReader struct {
 	sourceName string
-	reader     io.Reader
 	scanner    *lineScanner
 	data       TestData
 	rewrite    *bytes.Buffer
@@ -38,14 +37,19 @@ func newTestDataReader(
 ) *testDataReader {
 	t.Helper()
 
+	// The file is read upfront, so that a read error is not mistaken for the end
+	// of the file (which, when rewriting, would truncate the file).
+	data, err := io.ReadAll(file)
+	if err != nil {
+		innermost(t).Fatalf("%s: %v", sourceName, err)
+	}
 	var rewrite *bytes.Buffer
 	if record {
 		rewrite = &bytes.Buffer{}
 	}
 	return &testDataReader{
 		sourceName: sourceName,
-		reader:     file,
-		scanner:    newLineScanner(file),
+		scanner:    newLineScanner(data),
 		rewrite:    rewrite,
 	}
 }

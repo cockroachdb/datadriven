@@ -14,27 +14,38 @@
 
 package datadriven
 
-import (
-	"bufio"
-	"io"
-)
+import "strings"
 
+// lineScanner iterates over the lines of a test file. Unlike bufio.Scanner, it
+// has no limit on the length of a line.
 type lineScanner struct {
-	*bufio.Scanner
+	// rest is the part of the file that follows the current line.
+	rest string
+	// text is the current line, without the end-of-line marker.
+	text string
+	// line is the 1-based number of the current line.
 	line int
 }
 
-func newLineScanner(r io.Reader) *lineScanner {
-	return &lineScanner{
-		Scanner: bufio.NewScanner(r),
-		line:    0,
-	}
+func newLineScanner(data []byte) *lineScanner {
+	return &lineScanner{rest: string(data)}
 }
 
+// Scan advances to the next line, which is then available through Text; it
+// returns false if there are no more lines. The end-of-line marker is a newline
+// optionally preceded by a carriage return; the last line doesn't need one.
 func (l *lineScanner) Scan() bool {
-	ok := l.Scanner.Scan()
-	if ok {
-		l.line++
+	if l.rest == "" {
+		l.text = ""
+		return false
 	}
-	return ok
+	l.text, l.rest, _ = strings.Cut(l.rest, "\n")
+	l.text = strings.TrimSuffix(l.text, "\r")
+	l.line++
+	return true
+}
+
+// Text returns the current line, without the end-of-line marker.
+func (l *lineScanner) Text() string {
+	return l.text
 }
