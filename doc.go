@@ -132,9 +132,9 @@
 // the actual outputs instead of being checked against them; the changes
 // should be carefully reviewed.
 //
-// With -test.v, each directive and its output are logged (except with
-// -rewrite); the -datadriven-quiet flag (or the DATADRIVEN_QUIET_LOG=true
-// environment variable) disables this (see Verbose). Regardless, directives
-// that run for more than 10 seconds are logged periodically, to help debug
-// test timeouts.
+// With -test.v, each directive and its output are logged (except when the
+// test file is being rewritten); the -datadriven-quiet flag (or the
+// DATADRIVEN_QUIET_LOG=true environment variable) disables this (see Verbose).
+// Regardless, directives that run for more than 10 seconds are logged
+// periodically, to help debug test timeouts.
 package datadriven

@@ -121,7 +121,7 @@ func TestFlagValueErrors(t *testing.T) {
 		t.Run(tc.directive, func(t *testing.T) {
 			rec := &recorderTB{TB: t}
 			runAndWait(func() {
-				runFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+				RunTestFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 					tc.f(d)
 					return ""
 				})
@@ -456,7 +456,7 @@ func TestFlagValueCustomTypeErrors(t *testing.T) {
 		t.Run(tc.directive, func(t *testing.T) {
 			rec := &recorderTB{TB: t}
 			runAndWait(func() {
-				runFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+				RunTestFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 					tc.f(d)
 					return ""
 				})

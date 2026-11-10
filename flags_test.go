@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -98,5 +99,51 @@ func TestQuietEnvVar(t *testing.T) {
 		if !strings.Contains(string(out), "--- PASS: "+t.Name()) {
 			t.Fatalf("DATADRIVEN_QUIET_LOG=%s: test did not run:\n%s", val, out)
 		}
+	}
+}
+
+// TestRewriteMode verifies that with -rewrite, RunTest rewrites the file (and
+// sets TestData.Rewrite), while RunTestFromString still compares the outputs.
+func TestRewriteMode(t *testing.T) {
+	orig := flag.Lookup("rewrite").Value.String()
+	defer func() { _ = flag.Set("rewrite", orig) }()
+	if err := flag.Set("rewrite", "true"); err != nil {
+		t.Fatal(err)
+	}
+	const file = "cmd\n----\nfoo\n"
+
+	rec := &recorderTB{TB: t, keepFramework: true}
+	rewrite := true
+	runAndWait(func() {
+		RunTestFromString(rec, file, func(t *TBWrapper[*recorderTB], d *TestData) string {
+			rewrite = d.Rewrite
+			return "bar"
+		})
+	})
+	if rewrite {
+		t.Errorf("RunTestFromString set TestData.Rewrite")
+	}
+	if len(rec.msgs) != 1 || !strings.Contains(rec.msgs[0], "found:\n  bar") {
+		t.Errorf("RunTestFromString did not report the mismatch: %q", rec.msgs)
+	}
+
+	path := filepath.Join(t.TempDir(), "test")
+	if err := os.WriteFile(path, []byte(file), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rewrite = false
+	RunTest(t, path, func(t *T, d *TestData) string {
+		rewrite = d.Rewrite
+		return "bar"
+	})
+	if !rewrite {
+		t.Errorf("RunTest did not set TestData.Rewrite")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expected := "cmd\n----\nbar\n"; string(data) != expected {
+		t.Errorf("expected the file to be rewritten to %q, got %q", expected, data)
 	}
 }

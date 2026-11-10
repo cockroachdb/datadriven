@@ -139,7 +139,7 @@ func TestSubtestNotRunErrors(t *testing.T) {
 	for _, tc := range testCases {
 		rec := &recorderTB{TB: t, skipRun: func(name string) bool { return true }}
 		runAndWait(func() {
-			runFromString(rec, tc.file, func(t *TBWrapper[*recorderTB], d *TestData) string {
+			RunTestFromString(rec, tc.file, func(t *TBWrapper[*recorderTB], d *TestData) string {
 				t.Errorf("directive was run")
 				return ""
 			})

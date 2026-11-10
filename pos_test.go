@@ -154,7 +154,7 @@ func TestInputLinesAnnotations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recorderTB{TB: t}
 			runAndWait(func() {
-				runFromString(rec, "\ncmd\na\nb -x=1\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+				RunTestFromString(rec, "\ncmd\na\nb -x=1\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 					tc.f(t, d)
 					return ""
 				})
@@ -171,7 +171,7 @@ func TestInputLinesAnnotations(t *testing.T) {
 func TestFrameworkMessagesUseOriginal(t *testing.T) {
 	rec := &recorderTB{TB: t, keepFramework: true}
 	runAndWait(func() {
-		runFromString(rec, "\ncmd\ninput\n----\nwrong\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+		RunTestFromString(rec, "\ncmd\ninput\n----\nwrong\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 			d.Pos = Pos{File: "other", Line: 100}
 			d.Input = "other input"
 			d.Expected = "right\n"
@@ -187,7 +187,7 @@ func TestFrameworkMessagesUseOriginal(t *testing.T) {
 
 	rec = &recorderTB{TB: t, keepFramework: true}
 	runAndWait(func() {
-		runFromString(rec, "\ncmd\ninput\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+		RunTestFromString(rec, "\ncmd\ninput\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 			d.Pos = Pos{File: "other", Line: 100}
 			d.Input = "other input"
 			t.Fatal("fatal")
@@ -208,7 +208,7 @@ func TestInputLinesAsync(t *testing.T) {
 	done := make(chan struct{})
 	rec := &recorderTB{TB: t}
 	runAndWait(func() {
-		runFromString(rec, "async\nline\n----\n\nnext\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+		RunTestFromString(rec, "async\nline\n----\n\nnext\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 			switch d.Cmd {
 			case "async":
 				go func() {

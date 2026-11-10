@@ -106,6 +106,9 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   are not checked.
 - **`FullCmd` and `TestData.String`** render the flags (with their dashes)
   before the arguments, so expected outputs that include them change.
+- **`RunTestFromString` and `-rewrite`.** `RunTestFromString` now compares the
+  outputs even with `-rewrite` (in v1, its tests passed vacuously), and
+  `TestData.Rewrite` is only set when the test file is being rewritten.
 - **Subtests in benchmarks.** `subtest` directives are not supported when
   running over a `*testing.B`; they now fail with an error (in v1, the repeated
   invocations of a sub-benchmark function consumed the rest of the file).

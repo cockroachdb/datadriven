@@ -272,7 +272,7 @@ func TestPopArgsErrors(t *testing.T) {
 			rec := &recorderTB{TB: t}
 			ran := false
 			runAndWait(func() {
-				runFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+				RunTestFromString(rec, tc.directive+"\n----\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 					popHandler(t, d)
 					ran = true
 					return ""

@@ -129,7 +129,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 			r.readExpected(t)
 		}
 
-		r.data.Rewrite = rewriteFlag()
+		r.data.Rewrite = r.rewrite != nil
 		return true
 	}
 	return false

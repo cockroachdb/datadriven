@@ -32,7 +32,7 @@ func TestLongLines(t *testing.T) {
 		numDirectives++
 		return strings.Join(append(d.Args, d.Input), "\n")
 	}
-	runFromString(t, file, echo)
+	RunTestFromString(t, file, echo)
 	if numDirectives != 2 {
 		t.Fatalf("ran %d directives", numDirectives)
 	}
@@ -46,7 +46,7 @@ func TestLongLines(t *testing.T) {
 // are tolerated.
 func TestLineEndings(t *testing.T) {
 	var inputs []string
-	runFromString(t, "cmd\r\nfoo\r\nbar\r\n----\r\nok\r\n\r\ncmd\nbaz\n----\nok", func(t *T, d *TestData) string {
+	RunTestFromString(t, "cmd\r\nfoo\r\nbar\r\n----\r\nok\r\n\r\ncmd\nbaz\n----\nok", func(t *T, d *TestData) string {
 		inputs = append(inputs, d.Input)
 		return "ok"
 	})

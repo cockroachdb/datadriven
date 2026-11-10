@@ -32,7 +32,7 @@ wrong
 `
 	rec := &recorderTB{TB: t, keepFramework: true}
 	runAndWait(func() {
-		runFromString(rec, input, func(t *TBWrapper[*recorderTB], d *TestData) string {
+		RunTestFromString(rec, input, func(t *TBWrapper[*recorderTB], d *TestData) string {
 			if d.FullCmd() != "cmd -a=(1, 2) -c=3 b" {
 				t.Fatalf("unexpected FullCmd: %s", d.FullCmd())
 			}

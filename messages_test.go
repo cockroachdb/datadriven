@@ -25,7 +25,7 @@ import (
 func recordAll(t *testing.T, input string, f func(t *TBWrapper[*recorderTB], d *TestData) string) []string {
 	rec := &recorderTB{TB: t, keepFramework: true}
 	runAndWait(func() {
-		runFromString(rec, input, f)
+		RunTestFromString(rec, input, f)
 	})
 	return rec.msgs
 }
@@ -33,7 +33,7 @@ func recordAll(t *testing.T, input string, f func(t *TBWrapper[*recorderTB], d *
 func TestSubtestEndMismatchMessage(t *testing.T) {
 	rec := &recorderTB{TB: t}
 	runAndWait(func() {
-		runFromString(rec, "subtest foo\n\ncmd\n----\n\nsubtest end bar\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
+		RunTestFromString(rec, "subtest foo\n\ncmd\n----\n\nsubtest end bar\n", func(t *TBWrapper[*recorderTB], d *TestData) string {
 			return ""
 		})
 	})

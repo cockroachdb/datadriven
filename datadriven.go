@@ -163,12 +163,13 @@ func rewriteFile(file *os.File, data []byte) error {
 }
 
 // RunTestFromString is a version of RunTest which takes the contents of a test
-// directly.
+// directly. The outputs are always compared with the expected outputs, even
+// with -rewrite (there is no file to rewrite).
 func RunTestFromString[U testing.TB](
 	t U, input string, f func(t *TBWrapper[U], td *TestData) string,
 ) {
 	t.Helper()
-	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, rewriteFlag())
+	runTestInternal(t, "<string>" /* sourceName */, strings.NewReader(input), f, false /* rewrite */)
 }
 
 func runTestInternal[U testing.TB](
@@ -607,8 +608,10 @@ type TestData struct {
 	// with "return d.Expected" to signal that nothing has changed.
 	Expected string
 
-	// Rewrite is set if the test is being run with the -rewrite flag (see
-	// Rewrite).
+	// Rewrite is set if the test file is being rewritten with the actual outputs
+	// (i.e. the test is run with the -rewrite flag; see Rewrite), in which case
+	// the output of the directive is not compared with Expected. It is never set
+	// by RunTestFromString.
 	Rewrite bool
 
 	// T is the testing.TB for the directive; it is used by the TestData methods
@@ -736,7 +739,8 @@ func (td *TestData) render(directive string) string {
 // Returns the last value returned by f (which can be directly returned from the
 // function passed to RunTest).
 //
-// If --rewrite is used, just sleeps for 100ms.
+// If the test file is being rewritten (td.Rewrite is set), it just sleeps for
+// 100ms.
 func (td *TestData) Retry(f func() string) string {
 	td.tb().Helper()
 	return td.RetryFor(time.Second, f)

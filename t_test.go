@@ -385,7 +385,7 @@ ok
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				runFromString(rec, input.String(), func(t *TBWrapper[*recorderTB], d *TestData) string {
+				RunTestFromString(rec, input.String(), func(t *TBWrapper[*recorderTB], d *TestData) string {
 					return handler(t, d)
 				})
 			}()
@@ -490,14 +490,6 @@ func TestTOutput(t *testing.T) {
 	if t.Failed() {
 		t.Logf("child output:\n%s", out)
 	}
-}
-
-// runFromString is like RunTestFromString, but it always compares the outputs
-// (even with -rewrite); it is used by tests that check the framework's
-// messages.
-func runFromString[U testing.TB](t U, input string, f func(t *TBWrapper[U], td *TestData) string) {
-	t.Helper()
-	runTestInternal(t, "<string>", strings.NewReader(input), f, false /* rewrite */)
 }
 
 // recorderTB is a testing.TB which records messages instead of reporting them.
