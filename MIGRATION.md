@@ -93,8 +93,9 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   `d.HasArg`, and `d.BoolFlag` checks for a flag without a value (e.g.
   `-verbose`). The other scanning methods (`Arg`, `CmdArg.Scan`, `FirstVal`,
   etc.) are removed. Positional arguments can be retrieved with `PopArg`,
-  `PopArgs` and `ScanArgs`, which parse values like `FlagValue` does (e.g.
-  integers in base 10). Note that `ScanArgs` now scans the positional
+  `PopArgs` and `ScanArgs`; the latter two parse values like `FlagValue` does
+  (e.g. integers in base 10), including types that implement
+  `encoding.TextUnmarshaler`. Note that `ScanArgs` now scans the positional
   arguments: v1 code like `d.ScanArgs(t, "x", &x)` still compiles, but fails
   at run time (with a message pointing to `FlagValue`). Some error messages
   have changed.

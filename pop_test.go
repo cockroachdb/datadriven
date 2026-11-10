@@ -16,6 +16,8 @@ package datadriven
 
 import (
 	"fmt"
+	"math/big"
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -77,12 +79,13 @@ func popHandler(t testing.TB, d *TestData) string {
 		var n namedInt
 		d.PopArgs(&i, &u, &f, &b, &n)
 		fmt.Fprintf(&buf, "i=%d u=%d f=%g b=%t n=%d\n", i, u, f, b, n)
-	case "pop-args-scanner":
-		// Types that are not supported by FlagValue are scanned with fmt.Fscan.
-		var r firstRune
-		var bytes []byte
-		d.PopArgs(&r, &bytes)
-		fmt.Fprintf(&buf, "r=%c bytes=%q\n", rune(r), bytes)
+	case "pop-args-text":
+		// Types which implement encoding.TextUnmarshaler.
+		var l level
+		var addr netip.Addr
+		var n *big.Int
+		d.PopArgs(&l, &addr, &n)
+		fmt.Fprintf(&buf, "l=%d addr=%s n=%s\n", l, addr, n)
 	case "pop-args-nonptr":
 		d.PopArgs(i)
 	case "pop-args-nil":
@@ -172,10 +175,10 @@ pop-args-types 08 255 1.5e3 true -7
 i=8 u=255 f=1500 b=true n=-7
 remaining: pop-args-types
 
-pop-args-scanner x abc
+pop-args-text high ::1 12345678901234567890 foo
 ----
-r=x bytes="abc"
-remaining: pop-args-scanner
+l=2 addr=::1 n=12345678901234567890
+remaining: pop-args-text foo
 
 # ScanArgs doesn't remove the arguments.
 scan-args 12 foo
@@ -238,9 +241,9 @@ func TestPopArgsErrors(t *testing.T) {
 				`(directive: pop-args-types 1 256 1 true 1)`,
 		},
 		{
-			// A value scanned with fmt.Fscan must consume the entire argument.
-			"pop-args-scanner xy abc",
-			`<string>:1: PopArgs: argument "xy": unexpected "y" after the scanned value (directive: pop-args-scanner xy abc)`,
+			"pop-args-text medium ::1 1",
+			`<string>:1: PopArgs: argument "medium": parse "medium" as datadriven.level: unknown level ` +
+				`(directive: pop-args-text medium ::1 1)`,
 		},
 		{
 			"pop-args-dur 5 x",
@@ -286,14 +289,4 @@ func TestPopArgsErrors(t *testing.T) {
 			}
 		})
 	}
-}
-
-// firstRune implements fmt.Scanner by reading a single rune.
-type firstRune rune
-
-// Scan is part of the fmt.Scanner interface.
-func (r *firstRune) Scan(state fmt.ScanState, verb rune) error {
-	c, _, err := state.ReadRune()
-	*r = firstRune(c)
-	return err
 }

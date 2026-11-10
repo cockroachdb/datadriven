@@ -104,7 +104,8 @@
 // The flags are retrieved by name: HasFlag checks whether a flag is present,
 // BoolFlag checks for a flag that must not have a value (e.g. -verbose), and
 // FlagValue and FlagValueOr parse the value of a flag into a given type (a list
-// value, e.g. -names=(a, b), is retrieved as a slice). The positional arguments
+// value, e.g. -names=(a, b), is retrieved as a slice; a type defined by the
+// test can implement encoding.TextUnmarshaler). The positional arguments
 // are in TestData.Args (see also PopArg, PopArgs, ScanArgs). All the flags
 // must be processed by the test (so that e.g. a misspelled flag doesn't go
 // unnoticed): the flags that are retrieved by name are processed automatically,

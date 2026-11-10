@@ -15,6 +15,7 @@
 package datadriven
 
 import (
+	"encoding"
 	"fmt"
 	"reflect"
 	"slices"
@@ -95,13 +96,21 @@ func (td *TestData) BoolFlag(name string) bool {
 //	name := td.FlagValue[[]string]("name") // [c]
 //	d := td.FlagValue[time.Duration]("d")
 //
-// V must be one of: string, bool, integer and floating point types, named types
-// with one of these as the underlying type (e.g. type X int), time.Duration
-// (but not named types defined from it, which are parsed as integers), or
-// slices of these, including named slice types (e.g. type Elems []X). A list
-// value (e.g. -names=(a, b)) can only be retrieved as a slice; a single value
-// can be retrieved either as a scalar or as a slice with one element. Integers
-// are parsed in base 10.
+// V must be one of:
+//   - string, bool, an integer or floating point type, or a named type with one
+//     of these as the underlying type (e.g. type X int); integers are parsed in
+//     base 10;
+//   - time.Duration, which is parsed with time.ParseDuration (a named type
+//     defined from it is parsed as an integer);
+//   - a type that implements encoding.TextUnmarshaler, which is used to parse
+//     the value (regardless of the underlying type): either a type T for which
+//     *T implements it (e.g. netip.Addr, time.Time, or a type defined by the
+//     test), or a pointer type that implements it (e.g. *big.Int);
+//   - a slice of one of the above, including a named slice type (e.g.
+//     type Elems []X).
+//
+// A list value (e.g. -names=(a, b)) can only be retrieved as a slice; a single
+// value can be retrieved either as a scalar or as a slice with one element.
 //
 // It is a fatal error if the flag doesn't exist, if it doesn't have a value
 // (see BoolFlag), or if the value can't be parsed as a V.
@@ -143,7 +152,7 @@ func flagValue[V any](f Flag) (V, error) {
 		return v, fmt.Errorf("no value (see BoolFlag)")
 	}
 	rv := reflect.ValueOf(&v).Elem()
-	if rv.Kind() == reflect.Slice {
+	if isSliceType(rv.Type()) {
 		slice := reflect.MakeSlice(rv.Type(), len(f.Vals), len(f.Vals))
 		for i, s := range f.Vals {
 			if err := parseValue(s, slice.Index(i)); err != nil {
@@ -162,17 +171,57 @@ func flagValue[V any](f Flag) (V, error) {
 	return v, parseValue(f.Vals[0], rv)
 }
 
-// parseValue parses s and stores it into dest.
+var (
+	durationType        = reflect.TypeFor[time.Duration]()
+	textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
+)
+
+// unmarshalsText returns true if a value of type t is parsed using
+// encoding.TextUnmarshaler: either *t implements it, or t is a pointer type
+// that implements it (e.g. *big.Int).
+func unmarshalsText(t reflect.Type) bool {
+	return reflect.PointerTo(t).Implements(textUnmarshalerType) ||
+		(t.Kind() == reflect.Pointer && t.Implements(textUnmarshalerType))
+}
+
+// isSliceType returns true if a value of type t is parsed as a slice of values
+// (as opposed to a single value). A slice type which implements
+// encoding.TextUnmarshaler (e.g. net.IP) is a single value.
+func isSliceType(t reflect.Type) bool {
+	return t.Kind() == reflect.Slice && !unmarshalsText(t)
+}
+
+// parseValue parses s as a single value and stores it into dest (which must be
+// addressable). See FlagValue for the supported types.
 func parseValue(s string, dest reflect.Value) error {
-	if dest.Type() == reflect.TypeOf(time.Duration(0)) {
+	t := dest.Type()
+	switch {
+	case reflect.PointerTo(t).Implements(textUnmarshalerType):
+		u := dest.Addr().Interface().(encoding.TextUnmarshaler)
+		if err := u.UnmarshalText([]byte(s)); err != nil {
+			return fmt.Errorf("parse %q as %s: %w", s, t, err)
+		}
+		return nil
+
+	case t.Kind() == reflect.Pointer && t.Implements(textUnmarshalerType):
+		p := reflect.New(t.Elem())
+		if err := p.Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(s)); err != nil {
+			return fmt.Errorf("parse %q as %s: %w", s, t, err)
+		}
+		dest.Set(p)
+		return nil
+
+	case t == durationType:
 		d, err := time.ParseDuration(strings.TrimSpace(s))
 		if err != nil {
 			return err
 		}
 		dest.SetInt(int64(d))
 		return nil
+
+	default:
+		return parseArgVal(s, dest)
 	}
-	return parseArgVal(s, dest)
 }
 
 // MarkFlagProcessed marks a flag as processed. It is used when the flags are
@@ -253,14 +302,14 @@ func (td *TestData) PopArg() string {
 //	var s string
 //	td.PopArgs(&i, &s) // td.Args is now ["bar"]
 //
-// The values must be non-nil pointers. Values of the (non-slice) types
-// supported by FlagValue are parsed in the same way: e.g. integers are parsed
-// in base 10 (a leading 0 does not indicate an octal number) and a
-// time.Duration is parsed with time.ParseDuration. Values of other types (e.g.
-// implementations of fmt.Scanner) are scanned like fmt.Sscan does.
+// The values must be non-nil pointers to the (non-slice) types supported by
+// FlagValue, and are parsed in the same way: e.g. integers are parsed in base
+// 10 (a leading 0 does not indicate an octal number), a time.Duration is parsed
+// with time.ParseDuration, and a type that implements encoding.TextUnmarshaler
+// is parsed using it.
 //
 // It is a fatal error if there are not enough arguments, or if an argument
-// can't be parsed in its entirety (e.g. an int with an argument "12abc").
+// can't be parsed (in its entirety; e.g. an int with an argument "12abc").
 func (td *TestData) PopArgs(values ...any) {
 	td.tb().Helper()
 	td.scanEachArg("PopArgs", values)
@@ -285,30 +334,10 @@ func (td *TestData) scanEachArg(desc string, values []any) {
 		t.Fatalf("%s: not enough arguments (directive: %s)", desc, td.directiveLine())
 	}
 	for i, v := range values {
-		if err := parseArg(td.Args[i], v); err != nil {
+		if err := parseValue(td.Args[i], reflect.ValueOf(v).Elem()); err != nil {
 			t.Fatalf("%s: argument %q: %v (directive: %s)", desc, td.Args[i], err, td.directiveLine())
 		}
 	}
-}
-
-// parseArg parses a positional argument into the value that v (a non-nil
-// pointer) points to. The types supported by FlagValue are parsed in the same
-// way; other types are scanned with fmt.Fscan, which must consume the entire
-// argument.
-func parseArg(arg string, v any) error {
-	if _, ok := v.(fmt.Scanner); !ok {
-		if dest := reflect.ValueOf(v).Elem(); isParseableKind(dest.Kind()) {
-			return parseValue(arg, dest)
-		}
-	}
-	r := strings.NewReader(arg)
-	if _, err := fmt.Fscan(r, v); err != nil {
-		return err
-	}
-	if r.Len() > 0 {
-		return fmt.Errorf("unexpected %q after the scanned value", arg[len(arg)-r.Len():])
-	}
-	return nil
 }
 
 // checkPointers fails the test if any of the values is not a non-nil pointer.

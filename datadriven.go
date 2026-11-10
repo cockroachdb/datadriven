@@ -851,21 +851,9 @@ func indentLines(str string) string {
 	return b.String()
 }
 
-// isParseableKind returns true for the kinds supported by parseArgVal.
-func isParseableKind(k reflect.Kind) bool {
-	switch k {
-	case reflect.String, reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64:
-		return true
-	}
-	return false
-}
-
 // parseArgVal parses s and stores it into dest, which must have type int*,
 // uint*, float*, string, bool, or a named type with one of those underlying
-// kinds (see isParseableKind).
+// kinds.
 //
 // Integers are parsed in base 10.
 func parseArgVal(s string, dest reflect.Value) error {
