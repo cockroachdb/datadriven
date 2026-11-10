@@ -243,6 +243,9 @@ func runSubTest[U testing.TB](
 	// seenSkip is used below to verify that "Skip" has not been used
 	// inside a subtest. See below for details.
 	seenSkip := false
+	// ran is set if the subtest function was called; it is not called if the
+	// subtest is not selected (e.g. by the -run flag).
+	ran := false
 
 	// The name passed to t.Run is the last component in the subtest
 	// name, because all components before that are already prefixed by
@@ -251,6 +254,7 @@ func runSubTest[U testing.TB](
 
 	// Begin the sub-test.
 	subTest(t, testingSubTestName, func(t U) {
+		ran = true
 		// Cleanup functions registered on the subtest run when it finishes; they
 		// should not be annotated with the position of its last directive.
 		defer r.pos.set("")
@@ -271,6 +275,13 @@ func runSubTest[U testing.TB](
 		}
 	})
 
+	if !ran {
+		// The directives of the subtest are skipped (they must not run as part of
+		// the parent test).
+		skipSubTest(t, r, subTestName, subTestStartPos)
+		return
+	}
+
 	if seenSkip {
 		// t.Skip() is not yet supported inside a subtest. To add
 		// this functionality the following extra complexity is needed:
@@ -283,19 +294,45 @@ func runSubTest[U testing.TB](
 			"cannot use t.Skip inside subtest\n%s: subtest started here", subTestStartPos)
 	}
 
-	if seenSubTestEnd && len(r.data.Args) == 2 && r.data.Args[1] != subTestName {
+	if !seenSubTestEnd && t.Failed() {
+		// We only report a missing "subtest end" if there was no error otherwise;
+		// for if there was an error, the reading would have stopped.
+		return
+	}
+	checkSubTestEnd(t, r, subTestName, subTestStartPos, seenSubTestEnd)
+}
+
+// skipSubTest reads the directives of a subtest that is not run, up to and
+// including the final `subtest end` (the opening `subtest` directive has been
+// consumed already). When rewriting, the directives are preserved.
+func skipSubTest(t testing.TB, r *testDataReader, subTestName string, subTestStartPos Pos) {
+	seenSubTestEnd := false
+	for !seenSubTestEnd && r.Next(t) {
+		if isSubTestEnd(t, r) {
+			seenSubTestEnd = true
+		} else if nested, ok := isSubTestStart(t, r, subTestName+"/" /* mandatorySubTestPrefix */); ok {
+			skipSubTest(t, r, nested, r.data.Pos)
+		} else if err := r.emitOutput(r.data.Expected); err != nil {
+			r.fatalf(t, "cannot rewrite the output: %v", err)
+		}
+	}
+	checkSubTestEnd(t, r, subTestName, subTestStartPos, seenSubTestEnd)
+}
+
+// checkSubTestEnd verifies that a subtest ended with a `subtest end` directive
+// (as opposed to EOF) which, if it has a name, matches the name of the subtest.
+func checkSubTestEnd(
+	t testing.TB, r *testDataReader, subTestName string, subTestStartPos Pos, seenSubTestEnd bool,
+) {
+	if !seenSubTestEnd {
+		r.fatalf(t,
+			"EOF encountered without subtest end directive\n%s: subtest started here", subTestStartPos)
+	}
+	if len(r.data.Args) == 2 && r.data.Args[1] != subTestName {
 		// If a subtest name was provided after "subtest end", ensure that it matches.
 		r.fatalf(t,
 			"mismatched subtest end directive: expected %q, got %q", subTestName, r.data.Args[1])
 	}
-
-	if !seenSubTestEnd && !t.Failed() {
-		// We only report missing "subtest end" if there was no error otherwise;
-		// for if there was an error, the reading would have stopped.
-		r.fatalf(t,
-			"EOF encountered without subtest end directive\n%s: subtest started here", subTestStartPos)
-	}
-
 }
 
 func isSubTestStart(t testing.TB, r *testDataReader, mandatorySubTestPrefix string) (string, bool) {
@@ -419,20 +456,8 @@ func runDirective[U testing.TB](
 	// The test has not failed, we can analyze the expected
 	// output.
 	if r.rewrite != nil {
-		double, err := needsDoubleSeparators(actual)
-		if err != nil {
+		if err := r.emitOutput(actual); err != nil {
 			raw.Fatalf("%s: cannot rewrite the output: %v", orig.Pos, err)
-		}
-		r.emit("----")
-		if double {
-			r.emit("----")
-			r.rewrite.WriteString(actual)
-			r.emit("----")
-			r.emit("----")
-			r.emit("")
-		} else {
-			// Here actual already ends in \n so emit adds a blank line.
-			r.emit(actual)
 		}
 	} else if orig.Expected != actual {
 		expectedLines := difflib.SplitLines(orig.Expected)

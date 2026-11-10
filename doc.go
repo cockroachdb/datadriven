@@ -121,8 +121,10 @@
 //
 // Subtests can be nested; the name of a nested subtest must start with the
 // name of its parent and a slash (e.g. "foo/bar"). The name can also be
-// repeated after "subtest end". Subtests can't be skipped, and are not
-// supported in benchmarks.
+// repeated after "subtest end". The -run flag can be used to select subtests
+// (e.g. -run 'TestFoo/foo/bar'); the directives of the other subtests are
+// not run, but those outside of subtests are. A subtest can't be skipped with
+// t.Skip, and subtests are not supported in benchmarks.
 //
 // # Flags
 //

@@ -506,6 +506,9 @@ func runFromString[U testing.TB](t U, input string, f func(t *TBWrapper[U], td *
 type recorderTB struct {
 	testing.TB
 	keepFramework bool
+	// skipRun, if set, returns true for the subtests that Run must not run (like
+	// the subtests that are not selected by the -run flag).
+	skipRun func(name string) bool
 
 	mu       sync.Mutex
 	msgs     []string
@@ -517,6 +520,9 @@ type recorderTB struct {
 // Run runs a subtest (on the same recorder) and then the cleanup functions
 // registered during the subtest.
 func (r *recorderTB) Run(name string, f func(testing.TB)) {
+	if r.skipRun != nil && r.skipRun(name) {
+		return
+	}
 	r.mu.Lock()
 	saved := r.cleanups
 	r.cleanups = nil

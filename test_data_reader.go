@@ -200,6 +200,32 @@ func (r *testDataReader) fatalf(t testing.TB, format string, args ...any) {
 	t.Fatalf("%s: %s", r.data.Pos, fmt.Sprintf(format, args...))
 }
 
+// emitOutput emits the separator and the output of a directive (which is
+// either empty or ends in a newline), when rewriting. It returns an error if the
+// output can't be written to a test file.
+func (r *testDataReader) emitOutput(output string) error {
+	if r.rewrite == nil {
+		return nil
+	}
+	double, err := needsDoubleSeparators(output)
+	if err != nil {
+		return err
+	}
+	r.emit("----")
+	if double {
+		r.emit("----")
+		r.rewrite.WriteString(output)
+		r.emit("----")
+		r.emit("----")
+		r.emit("")
+	} else {
+		// The output ends in a newline (or it is empty), so emit adds a blank
+		// line.
+		r.emit(output)
+	}
+	return nil
+}
+
 func (r *testDataReader) emit(s string) {
 	if r.rewrite != nil {
 		r.rewrite.WriteString(s)
