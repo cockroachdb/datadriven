@@ -112,12 +112,14 @@ func (td *TestData) BoolFlag(name string) bool {
 // A list value (e.g. -names=(a, b)) can only be retrieved as a slice; a single
 // value can be retrieved either as a scalar or as a slice with one element.
 //
-// It is a fatal error if the flag doesn't exist, if it doesn't have a value
-// (see BoolFlag), or if the value can't be parsed as a V.
+// It is a fatal error if V is not one of these types, if the flag doesn't
+// exist, if it doesn't have a value (see BoolFlag), or if the value can't be
+// parsed as a V.
 func (td *TestData) FlagValue[V any](name string) V {
 	t := td.tb()
 	t.Helper()
 	td.MarkFlagProcessed(name)
+	td.checkFlagType(name, reflect.TypeFor[V]())
 	f, ok := td.lookupFlag(name)
 	if !ok {
 		t.Fatalf("missing flag: -%s", name)
@@ -134,6 +136,7 @@ func (td *TestData) FlagValueOr[V any](name string, def V) V {
 	t := td.tb()
 	t.Helper()
 	td.MarkFlagProcessed(name)
+	td.checkFlagType(name, reflect.TypeFor[V]())
 	f, ok := td.lookupFlag(name)
 	if !ok {
 		return def
@@ -145,7 +148,19 @@ func (td *TestData) FlagValueOr[V any](name string, def V) V {
 	return v
 }
 
-// flagValue returns the value of the flag, parsed as a V.
+// checkFlagType fails the test if typ is not a type supported by FlagValue.
+// This is checked regardless of the flag (which can be missing, or an empty
+// list), so that the mistake is not found only when a test file uses the flag.
+func (td *TestData) checkFlagType(name string, typ reflect.Type) {
+	if !isValueType(typ) && !(isSliceType(typ) && isValueType(typ.Elem())) {
+		t := td.tb()
+		t.Helper()
+		t.Fatalf("flag -%s: unsupported type %s (see FlagValue)", name, typ)
+	}
+}
+
+// flagValue returns the value of the flag, parsed as a V (which must be a
+// supported type).
 func flagValue[V any](f Flag) (V, error) {
 	var v V
 	if !f.hasValue() {
@@ -191,8 +206,23 @@ func isSliceType(t reflect.Type) bool {
 	return t.Kind() == reflect.Slice && !unmarshalsText(t)
 }
 
-// parseValue parses s as a single value and stores it into dest (which must be
-// addressable). See FlagValue for the supported types.
+// isValueType returns true if parseValue supports values of type t.
+func isValueType(t reflect.Type) bool {
+	if unmarshalsText(t) || t == durationType {
+		return true
+	}
+	switch t.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+	return false
+}
+
+// parseValue parses s as a single value and stores it into dest, which must be
+// addressable and of a supported type (see isValueType).
 func parseValue(s string, dest reflect.Value) error {
 	t := dest.Type()
 	switch {
@@ -308,8 +338,9 @@ func (td *TestData) PopArg() string {
 // with time.ParseDuration, and a type that implements encoding.TextUnmarshaler
 // is parsed using it.
 //
-// It is a fatal error if there are not enough arguments, or if an argument
-// can't be parsed (in its entirety; e.g. an int with an argument "12abc").
+// It is a fatal error if a value is not such a pointer, if there are not enough
+// arguments, or if an argument can't be parsed (in its entirety; e.g. an int
+// with an argument "12abc").
 func (td *TestData) PopArgs(values ...any) {
 	td.tb().Helper()
 	td.scanEachArg("PopArgs", values)
@@ -340,7 +371,8 @@ func (td *TestData) scanEachArg(desc string, values []any) {
 	}
 }
 
-// checkPointers fails the test if any of the values is not a non-nil pointer.
+// checkPointers fails the test if any of the values is not a non-nil pointer to
+// a supported type.
 func (td *TestData) checkPointers(desc string, values []any) {
 	t := td.tb()
 	t.Helper()
@@ -352,8 +384,12 @@ func (td *TestData) checkPointers(desc string, values []any) {
 		}
 	}
 	for i, v := range values {
-		if rv := reflect.ValueOf(v); rv.Kind() != reflect.Pointer || rv.IsNil() {
+		rv := reflect.ValueOf(v)
+		if rv.Kind() != reflect.Pointer || rv.IsNil() {
 			t.Fatalf("%s: value %d must be a non-nil pointer, got %T", desc, i, v)
+		}
+		if typ := rv.Type().Elem(); !isValueType(typ) {
+			t.Fatalf("%s: value %d: unsupported type %s (see FlagValue)", desc, i, typ)
 		}
 	}
 }

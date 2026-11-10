@@ -86,6 +86,12 @@ func popHandler(t testing.TB, d *TestData) string {
 		var n *big.Int
 		d.PopArgs(&l, &addr, &n)
 		fmt.Fprintf(&buf, "l=%d addr=%s n=%s\n", l, addr, n)
+	case "pop-args-unsupported":
+		var v struct{}
+		d.PopArgs(&i, &v)
+	case "scan-args-slice":
+		var v []int
+		d.ScanArgs(&v)
 	case "pop-args-nonptr":
 		d.PopArgs(i)
 	case "pop-args-nil":
@@ -255,6 +261,10 @@ func TestPopArgsErrors(t *testing.T) {
 		},
 		{"pop-args-nonptr 5", `<string>:1: PopArgs: value 0 must be a non-nil pointer, got int`},
 		{"pop-args-nil 5", `<string>:1: PopArgs: value 0 must be a non-nil pointer, got *int`},
+		// An unsupported type is an error regardless of the arguments.
+		{"pop-args-unsupported", `<string>:1: PopArgs: value 1: unsupported type struct {} (see FlagValue)`},
+		{"pop-args-unsupported x 1", `<string>:1: PopArgs: value 1: unsupported type struct {} (see FlagValue)`},
+		{"scan-args-slice 1", `<string>:1: ScanArgs: value 0: unsupported type []int (see FlagValue)`},
 		{
 			"scan-args 12 foo bar baz",
 			`<string>:1: ScanArgs: unexpected arguments: bar baz (directive: scan-args 12 foo bar baz)`,

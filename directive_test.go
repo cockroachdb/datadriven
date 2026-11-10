@@ -15,6 +15,7 @@
 package datadriven
 
 import (
+	"encoding"
 	"fmt"
 	"reflect"
 	"slices"
@@ -98,7 +99,36 @@ func TestFlagValueErrors(t *testing.T) {
 		},
 		{
 			"cmd -n=1", func(d *TestData) { d.FlagValue[struct{}]("n") },
-			`<string>:1: flag -n: unsupported destination type struct {}`,
+			`<string>:1: flag -n: unsupported type struct {} (see FlagValue)`,
+		},
+		// An unsupported type is an error even if no value would be parsed.
+		{
+			"cmd", func(d *TestData) { d.FlagValueOr("n", struct{}{}) },
+			`<string>:1: flag -n: unsupported type struct {} (see FlagValue)`,
+		},
+		{
+			"cmd", func(d *TestData) { d.FlagValue[any]("n") },
+			`<string>:1: flag -n: unsupported type interface {} (see FlagValue)`,
+		},
+		{
+			"cmd -n=()", func(d *TestData) { d.FlagValue[[]struct{}]("n") },
+			`<string>:1: flag -n: unsupported type []struct {} (see FlagValue)`,
+		},
+		{
+			"cmd -n=()", func(d *TestData) { d.FlagValueOr("n", [][]int(nil)) },
+			`<string>:1: flag -n: unsupported type [][]int (see FlagValue)`,
+		},
+		{
+			"cmd", func(d *TestData) { d.FlagValueOr("n", (*int)(nil)) },
+			`<string>:1: flag -n: unsupported type *int (see FlagValue)`,
+		},
+		{
+			"cmd", func(d *TestData) { d.FlagValueOr("n", map[string]int(nil)) },
+			`<string>:1: flag -n: unsupported type map[string]int (see FlagValue)`,
+		},
+		{
+			"cmd", func(d *TestData) { d.FlagValueOr[encoding.TextUnmarshaler]("n", nil) },
+			`<string>:1: flag -n: unsupported type encoding.TextUnmarshaler (see FlagValue)`,
 		},
 		{
 			"cmd -b=yes", func(d *TestData) { d.FlagValue[bool]("b") },
