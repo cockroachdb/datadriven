@@ -87,3 +87,109 @@ func TestReadError(t *testing.T) {
 		t.Fatalf("expected %q, got %q", expected, rec.msgs)
 	}
 }
+
+// TestRewriteRoundTrip verifies that rewriting produces a file in which the
+// expected output is the actual output (and the directives that follow are
+// preserved), for outputs with ---- lines, blank lines and carriage returns.
+// Rewriting must only fail for an output that can't be written in any form.
+func TestRewriteRoundTrip(t *testing.T) {
+	alphabet := []string{"----", "", "a", "  ", "a\r", "----\r"}
+	const maxLines = 4
+	const rest = "\nlast\n----\nfoo\n"
+	var numErrors, numOutputs int
+	var test func(lines []string)
+	test = func(lines []string) {
+		if len(lines) < maxLines {
+			for _, l := range alphabet {
+				test(append(lines[:len(lines):len(lines)], l))
+			}
+		}
+		if len(lines) == 0 {
+			return
+		}
+		numOutputs++
+		output := strings.Join(lines, "\n")
+		handler := func(t *TBWrapper[*recorderTB], d *TestData) string {
+			if d.Cmd == "last" {
+				return "foo"
+			}
+			return output
+		}
+		// run returns the rewritten file (if rewriting) and the messages, and
+		// whether the file passed.
+		run := func(file string, rewrite bool) (rewritten string, msgs []string, ok bool) {
+			rec := &recorderTB{TB: t}
+			numDirectives := 0
+			runAndWait(func() {
+				rewritten = string(runTestInternal(rec, "<string>", strings.NewReader(file),
+					func(t *TBWrapper[*recorderTB], d *TestData) string {
+						numDirectives++
+						return handler(t, d)
+					}, rewrite))
+			})
+			return rewritten, rec.msgs, !rec.Failed() && numDirectives == 2
+		}
+		passes := func(file string) bool {
+			_, _, ok := run(file, false /* rewrite */)
+			return ok
+		}
+		file, msgs, ok := run("cmd\n----\n"+rest, true /* rewrite */)
+		if !ok {
+			if len(msgs) != 1 || !strings.HasPrefix(msgs[0], "<string>:1: cannot rewrite the output: ") {
+				t.Fatalf("output %q: unexpected messages: %q", output, msgs)
+			}
+			// Neither form must work.
+			normalized := output
+			if normalized != "" && !strings.HasSuffix(normalized, "\n") {
+				normalized += "\n"
+			}
+			for _, form := range []string{
+				"cmd\n----\n" + normalized + rest,
+				"cmd\n----\n----\n" + normalized + "----\n----\n" + rest,
+			} {
+				if passes(form) {
+					t.Fatalf("output %q: %s\nbut it can be written as:\n%s", output, msgs[0], form)
+				}
+			}
+			numErrors++
+			return
+		}
+		if !passes(file) {
+			t.Fatalf("output %q was written as:\n%s\nwhich doesn't pass", output, file)
+		}
+		if again, _, _ := run(file, true /* rewrite */); again != file {
+			t.Fatalf("output %q was written as:\n%s\nwhich was rewritten to:\n%s", output, file, again)
+		}
+	}
+	test(nil)
+	if numErrors == 0 || numErrors == numOutputs {
+		t.Fatalf("%d of the %d outputs could not be written", numErrors, numOutputs)
+	}
+}
+
+// TestRewriteErrors verifies the errors for outputs that can't be written to a
+// test file.
+func TestRewriteErrors(t *testing.T) {
+	const consecutive = "<string>:1: cannot rewrite the output: an output with blank lines (or which " +
+		"starts with a ---- line) can't end with a ---- line or contain two consecutive ---- lines"
+	testCases := []struct {
+		output   string
+		expected string
+	}{
+		{"----", consecutive},
+		{"a\n\n----\n----\nb", consecutive},
+		{"a\n\n----", consecutive},
+		{"a\r\nb", "<string>:1: cannot rewrite the output: line 1 of the output ends with a carriage return"},
+		{"a\nb\r", "<string>:1: cannot rewrite the output: line 2 of the output ends with a carriage return"},
+	}
+	for _, tc := range testCases {
+		rec := &recorderTB{TB: t}
+		runAndWait(func() {
+			runTestInternal(rec, "<string>", strings.NewReader("cmd\n----\n"),
+				func(t *TBWrapper[*recorderTB], d *TestData) string { return tc.output }, true /* rewrite */)
+		})
+		if expected := []string{tc.expected}; !reflect.DeepEqual(rec.msgs, expected) {
+			t.Errorf("output %q: expected %q, got %q", tc.output, expected, rec.msgs)
+		}
+	}
+}

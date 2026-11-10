@@ -274,6 +274,10 @@ func TestRewrite(t *testing.T) {
 				case "no-output":
 					return ""
 
+				case "dashes":
+					// The input can't contain ---- lines.
+					return strings.ReplaceAll(d.Input, "~~~~", "----")
+
 				default:
 					t.Fatalf("unknown directive %s", d.Cmd)
 					return ""
@@ -281,6 +285,14 @@ func TestRewrite(t *testing.T) {
 			}
 
 			rewriteData := runTestInternal(t, path, file, handler, true /* rewrite */)
+
+			// The rewritten file must pass, and rewriting it again must not change
+			// it.
+			runTestInternal(t, path, bytes.NewReader(rewriteData), handler, false /* rewrite */)
+			again := runTestInternal(t, path, bytes.NewReader(rewriteData), handler, true /* rewrite */)
+			if !bytes.Equal(again, rewriteData) {
+				t.Errorf("rewriting the rewritten file changed it:\n%s\nto:\n%s", rewriteData, again)
+			}
 
 			afterPath := filepath.Join(testDir, fmt.Sprintf("%s-after", test))
 			if rewriteFlag() {

@@ -1,0 +1,31 @@
+# An output that starts with a ---- line needs double separators.
+dashes
+~~~~
+foo
+----
+
+dashes
+~~~~
+foo
+~~~~
+bar
+----
+old
+
+# ---- lines elsewhere in the output don't.
+dashes
+foo
+~~~~
+~~~~
+----
+
+dashes
+foo
+~~~~
+----
+foo
+----
+
+noop
+last
+----

@@ -41,7 +41,8 @@
 // The input consists of the lines up to the ---- separator; leading and
 // trailing blank lines (and whitespace) are trimmed. The expected output ends
 // at the first blank line, so it can't contain blank lines. An expected output
-// with blank lines can be specified using double separators:
+// with blank lines (or which starts with a ---- line) can be specified using
+// double separators:
 //
 //	<command>
 //	<input>
@@ -52,6 +53,11 @@
 //	<more expected output>
 //	----
 //	----
+//
+// Such an output ends at the first two consecutive ---- lines, so it can't
+// contain them (or end with a ---- line). The lines of a test file can end
+// with LF or CRLF, so a line of an expected output can't end with a carriage
+// return.
 //
 // # Running tests
 //

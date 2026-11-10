@@ -419,8 +419,12 @@ func runDirective[U testing.TB](
 	// The test has not failed, we can analyze the expected
 	// output.
 	if r.rewrite != nil {
+		double, err := needsDoubleSeparators(actual)
+		if err != nil {
+			raw.Fatalf("%s: cannot rewrite the output: %v", orig.Pos, err)
+		}
 		r.emit("----")
-		if hasBlankLine(actual) {
+		if double {
 			r.emit("----")
 			r.rewrite.WriteString(actual)
 			r.emit("----")
@@ -765,26 +769,41 @@ func (td *TestData) tb() testing.TB {
 	return td.T
 }
 
-// hasBlankLine returns true iff `s` contains at least one line that's
-// empty or contains only whitespace.
-func hasBlankLine(s string) bool {
-	return blankLineRe.MatchString(s)
+// needsDoubleSeparators returns true if an output must be written to the test
+// file between double ---- separators (see the package documentation), and
+// false if it can be written after a single separator. It returns an error if
+// the output can't be written in either form (i.e. such that it is read back
+// unchanged).
+func needsDoubleSeparators(output string) (bool, error) {
+	if output == "" {
+		return false, nil
+	}
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	// A carriage return at the end of a line is removed when the file is read
+	// (as part of the end-of-line marker).
+	for i, line := range lines {
+		if strings.HasSuffix(line, "\r") {
+			return false, fmt.Errorf("line %d of the output ends with a carriage return", i+1)
+		}
+	}
+	// After a single separator, the output ends at the first blank line, and a
+	// ---- line right after the separator makes it a double separator.
+	isBlank := func(line string) bool { return strings.TrimSpace(line) == "" }
+	if lines[0] != "----" && !slices.ContainsFunc(lines, isBlank) {
+		return false, nil
+	}
+	// Between double separators, the output ends at the first two consecutive
+	// ---- lines.
+	for i, line := range lines {
+		if line == "----" && (i == len(lines)-1 || lines[i+1] == "----") {
+			return false, fmt.Errorf(
+				"an output with blank lines (or which starts with a ---- line) can't " +
+					"end with a ---- line or contain two consecutive ---- lines",
+			)
+		}
+	}
+	return true, nil
 }
-
-// blankLineRe matches lines that contain only whitespaces (or
-// entirely empty/blank lines).  We use the "m" flag for "multiline"
-// mode so that "^" can match the beginning of individual lines inside
-// the input, not just the beginning of the input.  In multiline mode,
-// "$" also matches the end of lines. However, note how the regexp
-// uses "\n" to match the end of lines instead of "$". This is
-// because of an oddity in the Go regexp engine: at the very end of
-// the input, *after the final \n in the input*, Go estimates there is
-// still one more line containing no characters but that matches the
-// "^.*$" regexp. The result of this oddity is that an input text like
-// "foo\n" will match as "foo\n" (no match) + "" (yes match). We don't
-// want that final match to be included, so we force the end-of-line
-// match using "\n" specifically.
-var blankLineRe = regexp.MustCompile(`(?m)^[\t ]*\n`)
 
 func indentLines(str string) string {
 	var b strings.Builder
