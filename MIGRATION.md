@@ -114,6 +114,10 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
 - **`RunTestFromString` and `-rewrite`.** `RunTestFromString` now compares the
   outputs even with `-rewrite` (in v1, its tests passed vacuously), and
   `TestData.Rewrite` is only set when the test file is being rewritten.
+- **Unterminated double separators.** An expected output that starts with a
+  double `----` separator must end with one; otherwise, the test fails (in v1,
+  the rest of the file was taken as the expected output, and removed by
+  `-rewrite`).
 - **Subtests in benchmarks.** `subtest` directives are not supported when
   running over a `*testing.B`; they now fail with an error (in v1, the repeated
   invocations of a sub-benchmark function consumed the rest of the file).

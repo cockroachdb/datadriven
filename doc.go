@@ -54,10 +54,10 @@
 //	----
 //	----
 //
-// Such an output ends at the first two consecutive ---- lines, so it can't
-// contain them (or end with a ---- line). The lines of a test file can end
-// with LF or CRLF, so a line of an expected output can't end with a carriage
-// return.
+// Such an output ends at the first two consecutive ---- lines (which are
+// required), so it can't contain them (or end with a ---- line). The lines of
+// a test file can end with LF or CRLF, so a line of an expected output can't
+// end with a carriage return.
 //
 // # Running tests
 //

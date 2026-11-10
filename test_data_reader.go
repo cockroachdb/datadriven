@@ -148,8 +148,10 @@ func (r *testDataReader) readExpected(t testing.TB) {
 	}
 
 	if allowBlankLines {
+		start := Pos{File: r.sourceName, Line: r.scanner.line}
 		// Look for two successive lines of "----" before terminating.
-		for r.scanner.Scan() {
+		terminated := false
+		for !terminated && r.scanner.Scan() {
 			line = r.scanner.Text()
 
 			if line == "----" {
@@ -162,7 +164,8 @@ func (r *testDataReader) readExpected(t testing.TB) {
 							t.Fatalf("%s: non-blank line after the end of a double ---- separator section",
 								Pos{File: r.sourceName, Line: r.scanner.line})
 						}
-						break
+						terminated = true
+						continue
 					}
 
 					fmt.Fprintln(&buf, line)
@@ -172,6 +175,11 @@ func (r *testDataReader) readExpected(t testing.TB) {
 			}
 
 			fmt.Fprintln(&buf, line)
+		}
+		if !terminated {
+			// Otherwise, the rest of the file would be taken as the expected
+			// output, and removed when rewriting.
+			t.Fatalf("%s: unterminated double ---- separator section (it must end with two consecutive ---- lines)", start)
 		}
 	} else {
 		// Terminate on first blank line.

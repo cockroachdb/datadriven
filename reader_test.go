@@ -193,3 +193,43 @@ func TestRewriteErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestUnterminatedDoubleSeparator verifies that a double ---- separator
+// section which is not terminated is an error; otherwise, the rest of the file
+// would be taken as the expected output (and removed when rewriting).
+func TestUnterminatedDoubleSeparator(t *testing.T) {
+	const msg = "<string>:3: unterminated double ---- separator section (it must end with two consecutive ---- lines)"
+	for _, file := range []string{
+		"cmd\n----\n----\nfoo\n\nbar\n\ncmd2\n----\nx\n",
+		"cmd\n----\n----\nfoo\n----\n",
+		"cmd\n----\n----\nfoo\n----\nbar\n",
+		"cmd\n----\n----\n",
+		"cmd\n----\n----",
+	} {
+		for _, rewrite := range []bool{false, true} {
+			rec := &recorderTB{TB: t}
+			runAndWait(func() {
+				runTestInternal(rec, "<string>", strings.NewReader(file),
+					func(t *TBWrapper[*recorderTB], d *TestData) string {
+						t.Errorf("directive %s was run", d.Cmd)
+						return ""
+					}, rewrite)
+			})
+			if expected := []string{msg}; !reflect.DeepEqual(rec.msgs, expected) {
+				t.Errorf("%q (rewrite=%t): expected %q, got %q", file, rewrite, expected, rec.msgs)
+			}
+		}
+	}
+
+	// The section can end at the end of the file.
+	for _, file := range []string{"cmd\n----\n----\nfoo\n\nbar\n----\n----", "cmd\n----\n----\n----\n----\n"} {
+		ran := false
+		RunTestFromString(t, file, func(t *T, d *TestData) string {
+			ran = true
+			return d.Expected
+		})
+		if !ran {
+			t.Errorf("%q: the directive was not run", file)
+		}
+	}
+}

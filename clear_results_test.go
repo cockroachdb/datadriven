@@ -99,6 +99,11 @@ last
 			expectedErr: "<path>:1: cannot parse directive at column 4 (unclosed '('): xx (",
 		},
 		{
+			name:        "unterminated-double-separator",
+			input:       "a\n----\n----\nfoo\n\nb\n----\nbar\n",
+			expectedErr: "<path>:3: unterminated double ---- separator section (it must end with two consecutive ---- lines)",
+		},
+		{
 			name:        "missing-subtest-end",
 			input:       "subtest foo\n\ncmd\n----\nfoo\n",
 			expectedErr: "<path>:3: EOF encountered without subtest end directive\n<path>:1: subtest started here",
