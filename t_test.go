@@ -449,6 +449,24 @@ func TestTOutput(t *testing.T) {
 		{"has-pos", func(t *T, d *TestData) { t.Errorf("%s: has-pos", d.Pos) }, "has-pos"},
 		{"td-fatalf", func(t *T, d *TestData) { d.Fatalf("td-fatalf %d", 1) }, "td-fatalf 1"},
 		{"td-flag-value", func(t *T, d *TestData) { d.FlagValue[int]("x") }, "missing flag: -x"},
+		{
+			"input-directives",
+			func(t *T, d *TestData) {
+				d.Input = "sub -unprocessed"
+				for range d.InputDirectives() {
+				}
+			},
+			"unprocessed flags: -unprocessed",
+		},
+		{
+			"input-directives-parse",
+			func(t *T, d *TestData) {
+				d.Input = "sub ("
+				for range d.InputDirectives() {
+				}
+			},
+			"cannot parse directive at column 5 (unclosed '('): sub (",
+		},
 	}
 
 	if os.Getenv(tOutputChildEnv) != "" {

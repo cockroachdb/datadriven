@@ -79,7 +79,8 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
 - **`TestData.Pos` is a struct** (`File`, `Line`). Use `d.Pos.String()` where
   a string is needed, and `d.Pos.File` / `d.Pos.Line` instead of parsing the
   string. Assigning `d.Pos` no longer affects messages: to report errors at the
-  position of a line within the input, iterate with `d.InputLines()`.
+  position of a line within the input, iterate with `d.InputLines()` or
+  `d.InputDirectives()`.
 - **Flags and arguments.** `TestData.CmdArgs` is replaced by `Flags` (of type
   `Flag`, which replaces `CmdArg`, with `Name`, `Vals` and `List`) and `Args`
   (the positional arguments, as strings). Flags are usually accessed by name:
@@ -99,12 +100,15 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   arguments: v1 code like `d.ScanArgs(t, "x", &x)` still compiles, but fails
   at run time (with a message pointing to `FlagValue`). Some error messages
   have changed.
+- **Commands in the input.** Tests that parse each line of the input with
+  `ParseLine` can use `for cmd := range d.InputDirectives()` instead: each
+  line is returned as a `TestData`, errors are reported at the position of the
+  line, and all the flags on the line must be processed.
 - **`ParseLine`** returns the flags and the arguments separately
   (`cmd, flags, args, err := datadriven.ParseLine(line)`); to use the flag API
   on them, construct a `TestData` (e.g.
-  `&datadriven.TestData{Cmd: cmd, Flags: flags, Args: args, T: d.T}`). Only the
-  flags on the directive line itself must be processed; flags parsed this way
-  are not checked.
+  `&datadriven.TestData{Cmd: cmd, Flags: flags, Args: args, T: d.T}`). Flags
+  parsed this way are not checked for being processed.
 - **`FullCmd` and `TestData.String`** render the flags (with their dashes)
   before the arguments, so expected outputs that include them change.
 - **`RunTestFromString` and `-rewrite`.** `RunTestFromString` now compares the

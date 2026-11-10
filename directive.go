@@ -259,11 +259,13 @@ func parseValue(s string, dest reflect.Value) error {
 //
 // All the flags on the directive line (regardless of any changes to Flags) must
 // be processed by the time the test function returns; otherwise, the directive
-// fails. Flags that are looked up by name (e.g. with HasFlag, FlagValue) are
-// marked as processed automatically.
+// fails. The same goes for the flags of a directive returned by
+// InputDirectives, by the end of the iteration. Flags that are looked up by
+// name (e.g. with HasFlag, FlagValue) are marked as processed automatically.
 func (td *TestData) MarkFlagProcessed(name string) {
 	// The processed flags are only tracked (and checked) for the TestData passed
-	// to the test function (not for a TestData constructed manually).
+	// to the test function and those returned by InputDirectives (not for a
+	// TestData constructed manually).
 	if td.processed != nil {
 		td.processed.add(name)
 	}

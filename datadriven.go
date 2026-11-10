@@ -580,8 +580,8 @@ var tempFileRe = regexp.MustCompile(`(^\..*)|(.*~$)|(^#.*#$)`)
 // parsed from the test file.
 type TestData struct {
 	// Pos is the position of the directive in the test file. Messages reported
-	// through T are annotated with it (except in InputLines loops); changing it
-	// has no effect on them.
+	// through T are annotated with it (except in InputLines and InputDirectives
+	// loops); changing it has no effect on them.
 	Pos Pos
 
 	// Cmd is the command (the first word on the directive line).
@@ -620,8 +620,8 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// BoolFlag, FlagValue, FlagValueOr, PopArg, PopArgs, ScanArgs, Retry,
-	// RetryFor or Fatalf.
+	// BoolFlag, FlagValue, FlagValueOr, PopArg, PopArgs, ScanArgs,
+	// InputDirectives, Retry, RetryFor or Fatalf.
 	T testing.TB
 
 	// directive is the original directive line (with any continuation lines
@@ -661,34 +661,31 @@ func (p Pos) String() string {
 
 // InputLines returns an iterator over the lines of Input, along with their
 // positions in the test file. While the body of the loop runs, messages
-// reported through T (including by TestData methods like FlagValue or Fatalf)
-// are annotated with the position of the current line, instead of that of the
-// directive. This is useful for directives whose input contains a sequence of
-// commands; for example:
+// reported through T (including by TestData methods like Fatalf) are annotated
+// with the position of the current line, instead of that of the directive. For
+// example:
 //
 //	for _, line := range td.InputLines() {
-//		cmd, flags, args, err := datadriven.ParseLine(line)
-//		if err != nil {
-//			td.Fatalf("%v", err) // Reports the position of the line.
+//		key, value, ok := strings.Cut(line, "=")
+//		if !ok {
+//			td.Fatalf("invalid line %q", line) // Reports the position of the line.
 //		}
-//		sub := &datadriven.TestData{Cmd: cmd, Flags: flags, Args: args, T: td.T}
-//		n := sub.FlagValue[int]("n") // So do errors here.
 //		...
 //	}
 //
 // An empty Input has no lines. If the TestData was not read from a test file,
 // the positions are zero and messages are not affected. The annotations are
 // only reliable if the loop runs in the callback's goroutine.
+//
+// See InputDirectives for inputs in which each line is a command with flags
+// and arguments.
 func (td *TestData) InputLines() iter.Seq2[Pos, string] {
 	return func(yield func(Pos, string) bool) {
 		if td.Input == "" {
 			return
 		}
 		for i, line := range strings.Split(td.Input, "\n") {
-			var pos Pos
-			if td.inputPos.Line != 0 {
-				pos = Pos{File: td.inputPos.File, Line: td.inputPos.Line + i}
-			}
+			pos := td.inputLinePos(i)
 			if !td.withPos(pos, func() bool { return yield(pos, line) }) {
 				return
 			}
@@ -696,8 +693,102 @@ func (td *TestData) InputLines() iter.Seq2[Pos, string] {
 	}
 }
 
+// InputDirectives parses each line of Input like a directive line (see
+// ParseLine) and returns an iterator over the resulting directives. This is
+// used for directives whose input is a sequence of commands; for example, for
+//
+//	batch
+//	set a -value=1
+//	del b -sync
+//	----
+//
+// the test could run:
+//
+//	for cmd := range td.InputDirectives() {
+//		switch cmd.Cmd {
+//		case "set":
+//			b.Set(cmd.PopArg(), cmd.FlagValue[string]("value"))
+//		case "del":
+//			b.Delete(cmd.PopArg(), cmd.BoolFlag("sync"))
+//		default:
+//			cmd.Fatalf("unknown command %q", cmd.Cmd)
+//		}
+//	}
+//
+// Each directive is a TestData with Pos (the position of the line), Cmd, Flags
+// and Args set; it has no Input, and it shares T and Rewrite with td. Like in
+// a test file, blank lines and lines that start with # are skipped, and a line
+// that ends with a backslash continues on the next line.
+//
+// While the body of the loop runs, messages reported through T are annotated
+// with the position of the current line, like for InputLines. It is a fatal
+// error if a line can't be parsed, or if an iteration of the loop finishes
+// without processing all the flags on the line (see MarkFlagProcessed), like
+// for the flags on the directive line.
+func (td *TestData) InputDirectives() iter.Seq[*TestData] {
+	return func(yield func(*TestData) bool) {
+		t := td.tb()
+		t.Helper()
+		lines := strings.Split(td.Input, "\n")
+		for i := 0; i < len(lines); i++ {
+			pos := td.inputLinePos(i)
+			line := strings.TrimSpace(lines[i])
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			for strings.HasSuffix(line, `\`) && i+1 < len(lines) {
+				i++
+				line = strings.TrimSuffix(line, `\`) + " " + strings.TrimSpace(lines[i])
+			}
+			proceed := td.withPos(pos, func() bool {
+				t.Helper()
+				cmd, flags, args, err := ParseLine(line)
+				if err != nil {
+					t.Fatalf("%v", err)
+				}
+				if cmd == "" {
+					// A backslash followed by a blank line.
+					return true
+				}
+				// Like for the directive line, the check for unprocessed flags is not
+				// affected by changes that the loop body makes to the TestData.
+				processed := &processedFlags{}
+				proceed := yield(&TestData{
+					Pos:       pos,
+					Cmd:       cmd,
+					Flags:     slices.Clone(flags),
+					Args:      args,
+					Rewrite:   td.Rewrite,
+					T:         td.T,
+					directive: line,
+					processed: processed,
+				})
+				if unprocessed := processed.unprocessed(flags); len(unprocessed) > 0 && !t.Failed() {
+					t.Fatalf("unprocessed flags: %s", strings.Join(unprocessed, " "))
+				}
+				return proceed
+			})
+			if !proceed {
+				return
+			}
+		}
+	}
+}
+
+// inputLinePos returns the position of the i-th line of Input (or the zero Pos
+// if the TestData was not read from a test file).
+func (td *TestData) inputLinePos(i int) Pos {
+	if td.inputPos.Line == 0 {
+		return Pos{}
+	}
+	return Pos{File: td.inputPos.File, Line: td.inputPos.Line + i}
+}
+
 // withPos runs f while messages reported through T are annotated with pos.
 func (td *TestData) withPos(pos Pos, f func() bool) bool {
+	if td.T != nil {
+		td.T.Helper()
+	}
 	if td.curPos == nil || pos == (Pos{}) {
 		return f()
 	}

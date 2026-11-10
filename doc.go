@@ -112,6 +112,12 @@
 // and the others (see TestData.Flags) can be marked with MarkFlagProcessed.
 // Otherwise, the directive fails.
 //
+// When the input of a directive is a sequence of commands, with the same
+// syntax as a directive line, TestData.InputDirectives returns each of them as
+// a TestData (with the same flag and argument API, and the same check that all
+// the flags are processed), and reports errors at the position of the line.
+// TestData.InputLines does the latter for inputs with other formats.
+//
 // # Subtests
 //
 // A section of a test file can be run as a subtest (using testing.T.Run):
