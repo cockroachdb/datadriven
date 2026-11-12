@@ -9,7 +9,7 @@ read
 ----
 1
 
-inc n=20
+inc -n=20
 ----
 
 read

@@ -20,11 +20,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/datadriven/v2"
 )
 
 func TestDataDriven(t *testing.T) {
-	datadriven.RunTest(t, "testdata/whiteboard", func(t *testing.T, d *datadriven.TestData) string {
+	datadriven.RunTest(t, "testdata/whiteboard", func(t *datadriven.T, d *datadriven.TestData) string {
 		var wb Whiteboard
 		switch d.Cmd {
 		case "simple":
@@ -55,7 +55,7 @@ func TestDataDriven(t *testing.T) {
 			wb.Write(-1, 0, "ℤ")
 
 		default:
-			d.Fatalf(t, "unknown command: %s", d.Cmd)
+			d.Fatalf("unknown command: %s", d.Cmd)
 		}
 		return wb.String()
 	})

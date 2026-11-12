@@ -19,15 +19,47 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 )
 
 type testDataReader struct {
 	sourceName string
-	reader     io.Reader
 	scanner    *lineScanner
 	data       TestData
 	rewrite    *bytes.Buffer
+	// pos is the position of the directive that is currently running; it is
+	// used by the T wrappers to annotate messages.
+	pos directivePos
+	// deferred contains the errors which don't stop the processing of the file.
+	deferred deferredErrors
+}
+
+// deferredErrors collects errors which fail the test without stopping the
+// processing of the test file (e.g. unprocessed flags): the outputs of the
+// directives are still compared (or rewritten). They are reported when the
+// processing of the file ends. It is safe for concurrent use.
+type deferredErrors struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (d *deferredErrors) add(msg string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.msgs = append(d.msgs, msg)
+}
+
+// report reports (and clears) the errors.
+func (d *deferredErrors) report(t testing.TB) {
+	t.Helper()
+	d.mu.Lock()
+	msgs := d.msgs
+	d.msgs = nil
+	d.mu.Unlock()
+	for _, msg := range msgs {
+		t.Errorf("%s", msg)
+	}
 }
 
 func newTestDataReader(
@@ -35,19 +67,25 @@ func newTestDataReader(
 ) *testDataReader {
 	t.Helper()
 
+	// The file is read upfront, so that a read error is not mistaken for the end
+	// of the file (which, when rewriting, would truncate the file).
+	data, err := io.ReadAll(file)
+	if err != nil {
+		innermost(t).Fatalf("%s: %v", sourceName, err)
+	}
 	var rewrite *bytes.Buffer
 	if record {
 		rewrite = &bytes.Buffer{}
 	}
 	return &testDataReader{
 		sourceName: sourceName,
-		reader:     file,
-		scanner:    newLineScanner(file),
+		scanner:    newLineScanner(data),
 		rewrite:    rewrite,
 	}
 }
 
 func (r *testDataReader) Next(t testing.TB) bool {
+	t = innermost(t)
 	t.Helper()
 
 	for r.scanner.Scan() {
@@ -61,7 +99,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 
 		// Update Pos early so that a late error message has an updated
 		// position.
-		pos := fmt.Sprintf("%s:%d", r.sourceName, r.scanner.line)
+		pos := Pos{File: r.sourceName, Line: r.scanner.line}
 		r.data.Pos = pos
 
 		line = strings.TrimSpace(line)
@@ -79,7 +117,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 			line = strings.TrimSuffix(line, `\`) + " " + strings.TrimSpace(nextLine)
 		}
 
-		cmd, args, err := ParseLine(line)
+		cmd, flags, args, bareArgs, err := parseLine(line)
 		if err != nil {
 			t.Fatalf("%s: %v", pos, err)
 		}
@@ -89,7 +127,10 @@ func (r *testDataReader) Next(t testing.TB) bool {
 		}
 
 		r.data.Cmd = cmd
-		r.data.CmdArgs = args
+		r.data.Flags = flags
+		r.data.Args = args
+		r.data.bareArgs = bareArgs
+		r.data.directive = line
 
 		if cmd == "subtest" {
 			// Subtest directives do not have an input and expected output.
@@ -104,6 +145,10 @@ func (r *testDataReader) Next(t testing.TB) bool {
 				separator = true
 				break
 			}
+			if r.data.inputPos.Line == 0 && strings.TrimSpace(line) != "" {
+				// This is the first line of Input (which is trimmed below).
+				r.data.inputPos = Pos{File: r.sourceName, Line: r.scanner.line}
+			}
 
 			r.emit(line)
 			fmt.Fprintln(&buf, line)
@@ -115,7 +160,7 @@ func (r *testDataReader) Next(t testing.TB) bool {
 			r.readExpected(t)
 		}
 
-		r.data.Rewrite = *rewriteTestFiles
+		r.data.Rewrite = r.rewrite != nil
 		return true
 	}
 	return false
@@ -134,8 +179,10 @@ func (r *testDataReader) readExpected(t testing.TB) {
 	}
 
 	if allowBlankLines {
+		start := Pos{File: r.sourceName, Line: r.scanner.line}
 		// Look for two successive lines of "----" before terminating.
-		for r.scanner.Scan() {
+		terminated := false
+		for !terminated && r.scanner.Scan() {
 			line = r.scanner.Text()
 
 			if line == "----" {
@@ -145,9 +192,11 @@ func (r *testDataReader) readExpected(t testing.TB) {
 						// Read the following blank line (if we don't do this, we will emit
 						// an extra blank line when rewriting).
 						if r.scanner.Scan() && r.scanner.Text() != "" {
-							t.Fatal("non-blank line after end of double ---- separator section")
+							t.Fatalf("%s: non-blank line after the end of a double ---- separator section",
+								Pos{File: r.sourceName, Line: r.scanner.line})
 						}
-						break
+						terminated = true
+						continue
 					}
 
 					fmt.Fprintln(&buf, line)
@@ -157,6 +206,11 @@ func (r *testDataReader) readExpected(t testing.TB) {
 			}
 
 			fmt.Fprintln(&buf, line)
+		}
+		if !terminated {
+			// Otherwise, the rest of the file would be taken as the expected
+			// output, and removed when rewriting.
+			t.Fatalf("%s: unterminated double ---- separator section (it must end with two consecutive ---- lines)", start)
 		}
 	} else {
 		// Terminate on first blank line.
@@ -176,6 +230,39 @@ func (r *testDataReader) readExpected(t testing.TB) {
 	}
 
 	r.data.Expected = buf.String()
+}
+
+// fatalf fails the test with a message annotated with the current position.
+func (r *testDataReader) fatalf(t testing.TB, format string, args ...any) {
+	t = innermost(t)
+	t.Helper()
+	t.Fatalf("%s: %s", r.data.Pos, fmt.Sprintf(format, args...))
+}
+
+// emitOutput emits the separator and the output of a directive (which is
+// either empty or ends in a newline), when rewriting. It returns an error if the
+// output can't be written to a test file.
+func (r *testDataReader) emitOutput(output string) error {
+	if r.rewrite == nil {
+		return nil
+	}
+	double, err := needsDoubleSeparators(output)
+	if err != nil {
+		return err
+	}
+	r.emit("----")
+	if double {
+		r.emit("----")
+		r.rewrite.WriteString(output)
+		r.emit("----")
+		r.emit("----")
+		r.emit("")
+	} else {
+		// The output ends in a newline (or it is empty), so emit adds a blank
+		// line.
+		r.emit(output)
+	}
+	return nil
 }
 
 func (r *testDataReader) emit(s string) {

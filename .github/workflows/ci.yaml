@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - master
+      - v1
   pull_request:
     branches:
       - master
+      - v1
 
 jobs:
 
@@ -14,7 +16,7 @@ jobs:
     name: go-linux
     strategy:
       matrix:
-        go: ["1.21", "1.22", "1.23", "1.24", "1.25", "1.26", "1.27"]
+        go: ["1.27"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -30,7 +32,7 @@ jobs:
     name: go-linux-32bit
     strategy:
       matrix:
-        go: ["1.21", "1.22", "1.23", "1.24", "1.25", "1.26", "1.27"]
+        go: ["1.27"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -46,8 +48,8 @@ jobs:
     name: go-macos
     strategy:
       matrix:
-        go: ["1.21", "1.22", "1.23", "1.24", "1.25", "1.26", "1.27"]
-    runs-on: macos-14
+        go: ["1.27"]
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
 

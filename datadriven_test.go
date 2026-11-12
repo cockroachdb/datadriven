@@ -17,7 +17,7 @@ package datadriven
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -48,7 +48,7 @@ unknown command
 bar
 ----
 unknown command
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		if d.Input != "sentence" {
 			return "unknown command"
 		}
@@ -59,25 +59,97 @@ unknown command
 func TestParseLine(t *testing.T) {
 	RunTestFromString(t, `
 parse
-xx =
+xx -a=b -a=c --a
 ----
-here: cannot parse directive at column 4: xx =
+"xx" [-a=b -a=c -a] []
 
 parse
-xx a=b a=c
+xx -a=b x -b=c -c=(1,2,3) y
 ----
-"xx" [a=b a=c]
+"xx" [-a=b -b=c -c=(1, 2, 3)] [x y]
 
 parse
-xx a=b b=c c=(1,2,3)
+xx (
 ----
-"xx" [a=b b=c c=(1, 2, 3)]
-`, func(t *testing.T, d *TestData) string {
-		cmd, args, err := ParseLine(d.Input)
+cannot parse directive at column 4 (unclosed '('): xx (
+
+parse
+xx (a)) b
+----
+cannot parse directive at column 7 (unmatched ')'): xx (a)) b
+
+parse
+-x
+----
+cannot parse directive at column 1 (expected a command): -x
+
+parse
+xx -f(x)=1
+----
+cannot parse directive at column 4 (invalid flag name "f(x)"): xx -f(x)=1
+
+parse
+-- x
+----
+cannot parse directive at column 1 (expected a command): -- x
+
+# Columns are in characters.
+parse
+é 🍌 (
+----
+cannot parse directive at column 5 (unclosed '('): é 🍌 (
+
+parse
+xx 'abc
+----
+cannot parse directive at column 4 (unclosed quote): xx 'abc
+
+parse
+xx -a='b c
+----
+cannot parse directive at column 7 (unclosed quote): xx -a='b c
+
+parse
+xx 'it''s
+----
+cannot parse directive at column 4 (unclosed quote): xx 'it''s
+
+parse
+xx 'a'b
+----
+cannot parse directive at column 7 (unexpected text after the closing quote): xx 'a'b
+
+parse
+xx -a='b'(c)
+----
+cannot parse directive at column 10 (unexpected text after the closing quote): xx -a='b'(c)
+
+parse
+xx 'a' 'b''c'd
+----
+cannot parse directive at column 14 (unexpected text after the closing quote): xx 'a' 'b''c'd
+
+parse
+'xx' a
+----
+cannot parse directive at column 1 (expected a command): 'xx' a
+
+parse
+xx -a'b=1
+----
+cannot parse directive at column 4 (invalid flag name "a'b"): xx -a'b=1
+
+# Quotes do not group words inside parentheses.
+parse
+xx -a=('b)', c)
+----
+cannot parse directive at column 15 (unmatched ')'): xx -a=('b)', c)
+`, func(t *T, d *TestData) string {
+		cmd, flags, args, err := ParseLine(d.Input)
 		if err != nil {
-			return fmt.Errorf("here: %w", err).Error()
+			return err.Error()
 		}
-		return fmt.Sprintf("%q %+v", cmd, args)
+		return fmt.Sprintf("%q %v %v", cmd, flags, args)
 	})
 }
 
@@ -89,7 +161,7 @@ skip
 # This error should never happen.
 error
 ----
-`, func(t *testing.T, d *TestData) string {
+`, func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "skip":
 			// Verify that calling t.Skip() does not fail with an API error on
@@ -104,10 +176,10 @@ error
 }
 
 func TestSubTest(t *testing.T) {
-	RunTest(t, "testdata/subtest", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/subtest", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "hello":
-			return d.CmdArgs[0].Key + " was said"
+			return d.Args[0] + " was said"
 		case "skip":
 			// Verify that calling t.Skip() does not fail with an API error on
 			// testing.T.
@@ -123,7 +195,7 @@ func TestSubTest(t *testing.T) {
 }
 
 func TestMultiLineTest(t *testing.T) {
-	RunTest(t, "testdata/multiline", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/multiline", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "small":
 			return `just
@@ -144,11 +216,10 @@ output`
 
 func TestRetry(t *testing.T) {
 	var v atomic.Uint32
-	RunTest(t, "testdata/retry", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/retry", func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "inc":
-			n := 1
-			d.MaybeScanArgs(t, "n", &n)
+			n := d.FlagValueOr("n", 1)
 			for i := 0; i < n; i++ {
 				go func() {
 					time.Sleep(time.Duration(rand.Intn(10)) * time.Microsecond)
@@ -158,7 +229,7 @@ func TestRetry(t *testing.T) {
 			return ""
 
 		case "read":
-			return d.Retry(t, func() string {
+			return d.Retry(func() string {
 				return fmt.Sprint(v.Load())
 			})
 
@@ -170,11 +241,32 @@ func TestRetry(t *testing.T) {
 }
 
 func TestDirective(t *testing.T) {
-	RunTest(t, "testdata/directive", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/directive", func(t *T, d *TestData) string {
 		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "cmd: %s\n%d arguments\n", d.Cmd, len(d.CmdArgs))
-		for _, a := range d.CmdArgs {
-			fmt.Fprintf(&buf, "key=%#v vals=%#v\n", a.Key, a.Vals)
+		fmt.Fprintf(&buf, "cmd: %s\n", d.Cmd)
+		for _, f := range d.Flags {
+			switch {
+			case f.List:
+				fmt.Fprintf(&buf, "flag: name=%q list=%#v\n", f.Name, f.Vals)
+			case f.Vals != nil:
+				fmt.Fprintf(&buf, "flag: name=%q value=%q\n", f.Name, f.Vals[0])
+			default:
+				fmt.Fprintf(&buf, "flag: name=%q\n", f.Name)
+			}
+		}
+		d.MarkAllFlagsProcessed()
+		for _, a := range d.Args {
+			fmt.Fprintf(&buf, "arg: %q\n", a)
+		}
+		// FullCmd renders the directive such that it is parsed the same way.
+		full := d.FullCmd()
+		fmt.Fprintf(&buf, "full: %s\n", full)
+		cmd, flags, args, err := ParseLine(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd != d.Cmd || !reflect.DeepEqual(flags, d.Flags) || !reflect.DeepEqual(args, d.Args) {
+			t.Fatalf("FullCmd() parsed as %q %v %v", cmd, flags, args)
 		}
 		return buf.String()
 	})
@@ -182,7 +274,7 @@ func TestDirective(t *testing.T) {
 
 func TestWalk(t *testing.T) {
 	Walk(t, "testdata/walk", func(t *testing.T, path string) {
-		RunTest(t, path, func(t *testing.T, d *TestData) string {
+		RunTest(t, path, func(t *T, d *TestData) string {
 			return fmt.Sprintf("test name: %s\n", t.Name())
 		})
 	})
@@ -190,7 +282,7 @@ func TestWalk(t *testing.T) {
 
 func TestRewrite(t *testing.T) {
 	const testDir = "testdata/rewrite"
-	files, err := ioutil.ReadDir(testDir)
+	files, err := os.ReadDir(testDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +297,7 @@ func TestRewrite(t *testing.T) {
 	sort.Strings(tests)
 
 	for _, test := range tests {
-		subTest(t, test, func(t testing.TB) {
+		subTest(t, test, func(t *testing.T) {
 			path := filepath.Join(testDir, fmt.Sprintf("%s-before", test))
 			file, err := os.OpenFile(path, os.O_RDONLY, 0644 /* irrelevant */)
 			if err != nil {
@@ -214,7 +306,7 @@ func TestRewrite(t *testing.T) {
 			defer func() { _ = file.Close() }()
 
 			// Implement a few simple directives.
-			handler := func(t testing.TB, d *TestData) string {
+			handler := func(t *T, d *TestData) string {
 				switch d.Cmd {
 				case "noop":
 					return d.Input
@@ -228,6 +320,10 @@ func TestRewrite(t *testing.T) {
 				case "no-output":
 					return ""
 
+				case "dashes":
+					// The input can't contain ---- lines.
+					return strings.ReplaceAll(d.Input, "~~~~", "----")
+
 				default:
 					t.Fatalf("unknown directive %s", d.Cmd)
 					return ""
@@ -236,8 +332,16 @@ func TestRewrite(t *testing.T) {
 
 			rewriteData := runTestInternal(t, path, file, handler, true /* rewrite */)
 
+			// The rewritten file must pass, and rewriting it again must not change
+			// it.
+			runTestInternal(t, path, bytes.NewReader(rewriteData), handler, false /* rewrite */)
+			again := runTestInternal(t, path, bytes.NewReader(rewriteData), handler, true /* rewrite */)
+			if !bytes.Equal(again, rewriteData) {
+				t.Errorf("rewriting the rewritten file changed it:\n%s\nto:\n%s", rewriteData, again)
+			}
+
 			afterPath := filepath.Join(testDir, fmt.Sprintf("%s-after", test))
-			if *rewriteTestFiles {
+			if rewriteFlag() {
 				// We are rewriting the rewrite tests. Dump the output into -after files
 				out, err := os.Create(afterPath)
 				defer func() { _ = out.Close() }()
@@ -253,7 +357,7 @@ func TestRewrite(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				expected, err := ioutil.ReadAll(after)
+				expected, err := io.ReadAll(after)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -275,117 +379,103 @@ func TestRewrite(t *testing.T) {
 	}
 }
 
-func TestMaybeScan_Noop(t *testing.T) {
+func TestFlagValueOrMissing(t *testing.T) {
 	RunTestFromString(t, `
 cmd
 ----
-"", "", ""
-`, func(t *testing.T, d *TestData) string {
-		var x, y, z string
-		d.MaybeScanArgs(t, "vals", &x, &y, &z)
-		return fmt.Sprintf("%q, %q, %q", x, y, z)
+"default"
+`, func(t *T, d *TestData) string {
+		return fmt.Sprintf("%q", d.FlagValueOr("vals", "default"))
 	})
 }
 
-func TestScanArgsExpansion(t *testing.T) {
-	RunTestFromString(t, `
-cmd vals=(foo, bar, bax)
-----
-"foo", "bar", "bax"
-`, func(t *testing.T, d *TestData) string {
-		var x, y, z string
-		d.ScanArgs(t, "vals", &x, &y, &z)
-		return fmt.Sprintf("%q, %q, %q", x, y, z)
-	})
-}
-
-func TestScanArgsSingle(t *testing.T) {
-	checkScanEquivalence := func(d *TestData, dest1, dest2 interface{}) {
-		d.ScanArgs(t, "vals", dest1)
-		if _, ok := d.Arg("vals"); !ok {
-			t.Fatal("`vals` argument not found by TestData.Arg")
-		}
-		if ok := d.MaybeScanArgs(t, "vals", dest2); !ok {
-			t.Fatal("`vals` argument not found by TestData.MaybeScanArgs")
-		}
-		if !reflect.DeepEqual(dest1, dest2) {
-			t.Fatalf("scanned values %#v and %#v are unequal", dest1, dest2)
-		}
+// checkFlagValue returns d.FlagValue[V]("vals"), after checking that
+// FlagValueOr returns the same.
+func checkFlagValue[V any](d *TestData) V {
+	v1 := d.FlagValue[V]("vals")
+	var def V
+	if v2 := d.FlagValueOr("vals", def); !reflect.DeepEqual(v1, v2) {
+		d.T.Fatalf("FlagValue and FlagValueOr returned %#v and %#v", v1, v2)
 	}
+	return v1
+}
+
+func TestFlagValueTypes(t *testing.T) {
 
 	RunTestFromString(t, `
-[]string vals=(foo, bar, bax)
+[]string -vals=(foo, bar, bax)
 ----
 []string{"foo", "bar", "bax"}
 
-[]int vals=(1, 2, 3, 4)
+[]int -vals=(1, 2, 3, 4)
 ----
 []int{1, 2, 3, 4}
 
-[]uint64 vals=(1, 2, 3, 4)
+[]uint64 -vals=(1, 2, 3, 4)
 ----
 []uint64{0x1, 0x2, 0x3, 0x4}
 
-[]int64 vals=(10, 000016)
+[]int64 -vals=(10, 000016)
 ----
 []int64{10, 16}
 
-string vals=(foo)
+string -vals=foo
 ----
 "foo"
 
-bool vals=true
+# A single value can be retrieved as a slice.
+[]int -vals=5
+----
+[]int{5}
+
+# An empty list.
+[]string -vals=()
+----
+[]string{}
+
+bool -vals=true
 ----
 true
 
-float64 vals=1.1
+float64 -vals=1.1
 ----
 1.1
 
-[]float64 vals=(1.1, 2.2, 3.3, 4.4)
+[]float64 -vals=(1.1, 2.2, 3.3, 4.4)
 ----
 []float64{1.1, 2.2, 3.3, 4.4}
 
-time.Duration vals=10.0m
+time.Duration -vals=10.0m
 ----
 10m0s
-	`, func(t *testing.T, d *TestData) string {
+	`, func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "[]string":
-			var dest1, dest2 []string
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[[]string](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "[]int":
-			var dest1, dest2 []int
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[[]int](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "[]int64":
-			var dest1, dest2 []int64
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[[]int64](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "[]uint64":
-			var dest1, dest2 []uint64
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[[]uint64](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "[]float64":
-			var dest1, dest2 []float64
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[[]float64](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "float64":
-			var dest1, dest2 float64
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[float64](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "time.Duration":
-			var dest1, dest2 time.Duration
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[time.Duration](d)
 			return fmt.Sprintf("%s", dest1)
 		case "string":
-			var dest1, dest2 string
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[string](d)
 			return fmt.Sprintf("%#v", dest1)
 		case "bool":
-			var dest1, dest2 bool
-			checkScanEquivalence(d, &dest1, &dest2)
+			dest1 := checkFlagValue[bool](d)
 			return fmt.Sprintf("%#v", dest1)
 		default:
 			return fmt.Sprintf("unrecognized type %s", d.Cmd)
@@ -394,17 +484,32 @@ time.Duration vals=10.0m
 }
 
 func TestString(t *testing.T) {
-	RunTest(t, "testdata/string", func(t *testing.T, d *TestData) string {
+	RunTest(t, "testdata/string", func(t *T, d *TestData) string {
+		d.MarkAllFlagsProcessed()
 		return d.String()
 	})
 }
 
 func BenchmarkInput(b *testing.B) {
-	RunTestFromStringAny(b, `
+	RunTestFromString(b, `
 foo
 ----
 unknown command
-`, func(t testing.TB, d *TestData) string {
+`, func(b *B, d *TestData) string {
 		return "unknown command"
 	})
 }
+
+// BEGIN: TestData.T required
+func TestTestDataWithoutT(t *testing.T) {
+	defer func() {
+		if r := fmt.Sprint(recover()); !strings.Contains(r, "TestData.T is not set") {
+			t.Fatalf("unexpected panic: %s", r)
+		}
+	}()
+	td := TestData{Cmd: "cmd"}
+	var x int
+	td.FlagValueOr("x", x)
+}
+
+// END: TestData.T required

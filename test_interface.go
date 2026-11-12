@@ -19,19 +19,32 @@ import (
 	"testing"
 )
 
-// subTest delegates to a suitable implementation of Run().
-// This will be obsoleted when we're comfortable using 1.18 templates.
-func subTest(t testing.TB, name string, f func(t testing.TB)) {
-	switch t := t.(type) {
+// subTest runs f in a subtest of tb, using a suitable implementation of Run().
+// The testing.TB of the subtest must be a U.
+func subTest[U testing.TB](tb U, name string, f func(tb U)) {
+	if w, ok := asWrapper(tb); ok {
+		// A wrapper passed to a callback was passed back to us (e.g. to Walk).
+		w.subTestWrapped(name, func(t testing.TB) { f(t.(U)) })
+		return
+	}
+	switch t := any(tb).(type) {
 	case *testing.T:
-		t.Run(name, func(t *testing.T) { f(t) })
+		t.Run(name, func(t *testing.T) { f(any(t).(U)) })
 	case *testing.B:
-		t.Run(name, func(t *testing.B) { f(t) })
+		t.Run(name, func(t *testing.B) { f(any(t).(U)) })
 	case interface {
 		Run(string, func(testing.TB))
 	}:
-		t.Run(name, f)
+		t.Run(name, func(t testing.TB) {
+			u, ok := t.(U)
+			if !ok {
+				panic(fmt.Sprintf(
+					"%T.Run passed a %T to the subtest; use testing.TB as the type parameter", tb, t,
+				))
+			}
+			f(u)
+		})
 	default:
-		panic(fmt.Sprintf("don't know how to call Run over %T", t))
+		panic(fmt.Sprintf("don't know how to call Run over %T", tb))
 	}
 }

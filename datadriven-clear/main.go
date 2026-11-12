@@ -18,18 +18,18 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/datadriven/v2"
 )
 
 func main() {
 	if len(os.Args) == 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <test-file>...", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s <test-file>...\n", os.Args[0])
 		os.Exit(1)
 	}
 	for _, path := range os.Args[1:] {
 		err := datadriven.ClearResults(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("Cleared %s.\n", path)

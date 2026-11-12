@@ -6,21 +6,18 @@ simple
 input-line-1
 input-line-2
 
-with some args=2
+with some -flag=2
 input-line-1
 input-line-2
 ----
-with some args=2
+with -flag=2 some
 input-line-1
 input-line-2
 
-args that=(1) render=(1,2) differently=(1,2,3)
-input-line-1
-input-line-2
+# Flags are rendered before arguments, in a canonical form.
+flags that -render=(1) differently -lists=(1,2,3) -- -x
 ----
-args that=1 render=(1, 2) differently=(1, 2, 3)
-input-line-1
-input-line-2
+flags -render=(1) -lists=(1, 2, 3) -- that differently -x
 
 noinput
 ----
