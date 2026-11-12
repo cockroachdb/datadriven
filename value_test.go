@@ -110,7 +110,7 @@ func TestFlagValueTextUnmarshalerErrors(t *testing.T) {
 		},
 		{
 			"cmd -ip=(10.0.0.2, 10.0.0.3)", func(d *TestData) { d.FlagValue[net.IP]("ip") },
-			`<string>:1: flag -ip: the value is a list; use a slice type`,
+			`<string>:1: flag -ip: the value is a list; use a slice type (or quote the value)`,
 		},
 		{"cmd -l", func(d *TestData) { d.FlagValue[level]("l") }, `<string>:1: flag -l: no value (see BoolFlag)`},
 	}

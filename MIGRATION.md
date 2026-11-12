@@ -23,12 +23,20 @@ A flag can't be repeated. In v1, a repeated key was allowed, and the first
 occurrence was used; code that relies on this (e.g. by appending default
 arguments to `d.CmdArgs`, so that they can be overridden) must be changed.
 Also, `-key=(value)` is a list with one value (which can only be retrieved as a
-slice), and `-key=()` is an empty list; in v1, both were a single value.
+slice), and `-key=()` is an empty list; in v1, both were a single value. A
+single value with whitespace is written between single quotes:
+`key=(some value)` becomes `-key='some value'`.
 
 Words are separated by any whitespace (including tabs), except inside
-parentheses. Parentheses must be balanced in every word, and there is no
-escaping: a notation like `[a,b)` (e.g. a half-open span) must be changed, along
-with the test code that parses it.
+parentheses and quoted values. An argument or a flag value that starts with a
+single quote is a quoted value (see `ParseLine`): it extends to the closing
+quote (which must end the word), it is taken literally, and the quotes are
+removed. In v1 the quotes were part of the value: an argument like
+`uri='nodelocal://1/foo'` now has the value `nodelocal://1/foo`, and a value
+that must include the quotes is written as `'''nodelocal://1/foo'''` (two
+quotes inside a quoted value stand for a quote). Parentheses must be balanced
+in every word that is not quoted: a notation like `[a,b)` (e.g. a half-open
+span) must be quoted (`'[a,b)'`) or changed.
 
 All the flags must be processed by the test, otherwise the directive fails;
 this catches misspelled flags. Flags that the test retrieves by name are

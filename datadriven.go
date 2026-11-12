@@ -946,15 +946,17 @@ func indentLines(str string) string {
 // uint*, float*, string, bool, or a named type with one of those underlying
 // kinds.
 //
-// Integers are parsed in base 10.
+// Integers are parsed in base 10. A string is stored as it is (it can have
+// leading or trailing whitespace if the value is quoted).
 func parseArgVal(s string, dest reflect.Value) error {
 	t := dest.Type()
 
+	if t.Kind() == reflect.String {
+		dest.SetString(s)
+		return nil
+	}
 	s = strings.TrimSpace(s)
 	switch t.Kind() {
-	case reflect.String:
-		dest.SetString(s)
-
 	case reflect.Bool:
 		b, err := strconv.ParseBool(s)
 		if err != nil {

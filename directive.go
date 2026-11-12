@@ -42,13 +42,18 @@ func (f Flag) hasValue() bool {
 	return len(f.Vals) > 0 || f.List
 }
 
-// String renders the flag in the directive line syntax.
+// String renders the flag in the directive line syntax (see ParseLine); a
+// single value is quoted if necessary.
 func (f Flag) String() string {
 	switch {
 	case f.List:
 		return "-" + f.Name + "=(" + strings.Join(f.Vals, ", ") + ")"
 	case len(f.Vals) > 0:
-		return "-" + f.Name + "=" + f.Vals[0]
+		val := f.Vals[0]
+		if val != "" && (!isPlainWord(val) || isListValue(val)) {
+			val = quote(val)
+		}
+		return "-" + f.Name + "=" + val
 	default:
 		return "-" + f.Name
 	}
@@ -110,7 +115,9 @@ func (td *TestData) BoolFlag(name string) bool {
 //     type Elems []X).
 //
 // A list value (e.g. -names=(a, b)) can only be retrieved as a slice; a single
-// value can be retrieved either as a scalar or as a slice with one element.
+// value can be retrieved either as a scalar or as a slice with one element. A
+// single value with whitespace must be quoted (e.g. -name='a b'; see
+// ParseLine): -name=(a b) is a list.
 //
 // It is a fatal error if V is not one of these types, if the flag doesn't
 // exist, if it doesn't have a value (see BoolFlag), or if the value can't be
@@ -181,7 +188,7 @@ func flagValue[V any](f Flag) (V, error) {
 		return v, nil
 	}
 	if f.List {
-		return v, fmt.Errorf("the value is a list; use a slice type")
+		return v, fmt.Errorf("the value is a list; use a slice type (or quote the value)")
 	}
 	return v, parseValue(f.Vals[0], rv)
 }
@@ -407,8 +414,9 @@ func (td *TestData) checkNoArgsLeft(desc string, n int) {
 }
 
 // FullCmd renders the command, the flags and the positional arguments (which
-// reflect any changes to Flags and Args, e.g. by PopArg). The flags are
-// rendered before the arguments.
+// reflect any changes to Flags and Args, e.g. by PopArg) in the directive line
+// syntax (see ParseLine). The flags are rendered before the arguments, and
+// values and arguments are quoted if necessary.
 func (td *TestData) FullCmd() string {
 	fields := make([]string, 0, 2+len(td.Flags)+len(td.Args))
 	fields = append(fields, td.Cmd)
@@ -418,5 +426,11 @@ func (td *TestData) FullCmd() string {
 	if slices.ContainsFunc(td.Args, func(a string) bool { return a == "--" || isFlag(a) }) {
 		fields = append(fields, "--")
 	}
-	return strings.Join(append(fields, td.Args...), " ")
+	for _, a := range td.Args {
+		if !isPlainWord(a) {
+			a = quote(a)
+		}
+		fields = append(fields, a)
+	}
+	return strings.Join(fields, " ")
 }

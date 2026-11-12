@@ -31,8 +31,9 @@
 // arguments, similar to a command line: the words that start with - (or --)
 // followed by a letter are flags, and the other words (as well as all the words
 // after a -- word) are positional arguments. A flag can have no value, a single
-// value, or a list of values, and it can't be repeated. See ParseLine for the
-// details.
+// value, or a list of values, and it can't be repeated. An argument or a single
+// value can be written between single quotes (e.g. -msg='hello world'), in
+// which case it can contain whitespace. See ParseLine for the details.
 //
 // Lines starting with # (outside of inputs and outputs) are comments; blank
 // lines between directives are ignored. A directive line can be continued on

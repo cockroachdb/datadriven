@@ -98,6 +98,52 @@ parse
 é 🍌 (
 ----
 cannot parse directive at column 5 (unclosed '('): é 🍌 (
+
+parse
+xx 'abc
+----
+cannot parse directive at column 4 (unclosed quote): xx 'abc
+
+parse
+xx -a='b c
+----
+cannot parse directive at column 7 (unclosed quote): xx -a='b c
+
+parse
+xx 'it''s
+----
+cannot parse directive at column 4 (unclosed quote): xx 'it''s
+
+parse
+xx 'a'b
+----
+cannot parse directive at column 7 (unexpected text after the closing quote): xx 'a'b
+
+parse
+xx -a='b'(c)
+----
+cannot parse directive at column 10 (unexpected text after the closing quote): xx -a='b'(c)
+
+parse
+xx 'a' 'b''c'd
+----
+cannot parse directive at column 14 (unexpected text after the closing quote): xx 'a' 'b''c'd
+
+parse
+'xx' a
+----
+cannot parse directive at column 1 (expected a command): 'xx' a
+
+parse
+xx -a'b=1
+----
+cannot parse directive at column 4 (invalid flag name "a'b"): xx -a'b=1
+
+# Quotes do not group words inside parentheses.
+parse
+xx -a=('b)', c)
+----
+cannot parse directive at column 15 (unmatched ')'): xx -a=('b)', c)
 `, func(t *T, d *TestData) string {
 		cmd, flags, args, err := ParseLine(d.Input)
 		if err != nil {

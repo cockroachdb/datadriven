@@ -17,6 +17,7 @@ package datadriven
 import (
 	"encoding"
 	"fmt"
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"strings"
@@ -46,6 +47,11 @@ a=true b=false has-c=true
 slices -ds=(1s, 2m) -d1=3s -ns=(a, b) -ni=(4, 5)
 ----
 ds=[1s 2m0s] d1=[3s] ns=datadriven.namedSlice{"a", "b"} ni=[]datadriven.namedInt{4, 5}
+
+# A quoted value is a single value, which is not trimmed if it is a string.
+quoted -s='  a b ' -l='(x, y)' -n=' 5 ' -ns='a, b' ' c '
+----
+s="  a b " l="(x, y)" n=5 ns=datadriven.namedSlice{"a, b"} arg=" c "
 `, func(t *T, d *TestData) string {
 		switch d.Cmd {
 		case "values":
@@ -57,6 +63,10 @@ ds=[1s 2m0s] d1=[3s] ns=datadriven.namedSlice{"a", "b"} ni=[]datadriven.namedInt
 			return fmt.Sprintf("n=%d m=%d", d.FlagValueOr("n", 1), d.FlagValueOr("m", 10))
 		case "bool":
 			return fmt.Sprintf("a=%t b=%t has-c=%t", d.BoolFlag("a"), d.BoolFlag("b"), d.HasFlag("c"))
+		case "quoted":
+			return fmt.Sprintf("s=%q l=%q n=%d ns=%#v arg=%q",
+				d.FlagValue[string]("s"), d.FlagValue[string]("l"), d.FlagValue[int]("n"),
+				d.FlagValue[namedSlice]("ns"), d.PopArg())
 		case "slices":
 			return fmt.Sprintf("ds=%v d1=%v ns=%#v ni=%#v",
 				d.FlagValue[[]time.Duration]("ds"), d.FlagValue[[]time.Duration]("d1"),
@@ -82,12 +92,12 @@ func TestFlagValueErrors(t *testing.T) {
 		{"cmd -n", func(d *TestData) { d.FlagValue[[]int]("n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
 		{
 			"cmd -n=(1,2)", func(d *TestData) { d.FlagValue[int]("n") },
-			`<string>:1: flag -n: the value is a list; use a slice type`,
+			`<string>:1: flag -n: the value is a list; use a slice type (or quote the value)`,
 		},
 		{
 			// A list with one element is still a list.
 			"cmd -n=(5)", func(d *TestData) { d.FlagValue[int]("n") },
-			`<string>:1: flag -n: the value is a list; use a slice type`,
+			`<string>:1: flag -n: the value is a list; use a slice type (or quote the value)`,
 		},
 		{
 			"cmd -n=(1,x)", func(d *TestData) { d.FlagValue[[]int]("n") },
@@ -380,6 +390,66 @@ func TestFlagProcessing(t *testing.T) {
 	}
 }
 
+// TestFullCmdRoundTrip verifies that FullCmd renders arbitrary values and
+// arguments such that they are parsed back unchanged.
+func TestFullCmdRoundTrip(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	alphabet := []string{"a", "b", " ", "\t", "'", "(", ")", ",", "=", "-", `"`, "é"}
+	randString := func() string {
+		var b strings.Builder
+		for range rng.IntN(6) {
+			b.WriteString(alphabet[rng.IntN(len(alphabet))])
+		}
+		return b.String()
+	}
+	// The elements of a list can't be quoted, so they are restricted to those
+	// that can be written as they are.
+	randElem := func() string {
+		for {
+			e := randString()
+			_, flags, _, err := ParseLine("cmd -x=(" + e + ", z)")
+			if e != "" && err == nil && reflect.DeepEqual(flags, []Flag{{Name: "x", Vals: []string{e, "z"}, List: true}}) {
+				return e
+			}
+		}
+	}
+	quoted := 0
+	for range 20000 {
+		td := TestData{Cmd: "cmd"}
+		for i := range rng.IntN(4) {
+			f := Flag{Name: fmt.Sprintf("f%d", i)}
+			switch rng.IntN(3) {
+			case 1:
+				f.Vals = []string{randString()}
+			case 2:
+				f.List = true
+				for range rng.IntN(3) {
+					f.Vals = append(f.Vals, randElem())
+				}
+			}
+			td.Flags = append(td.Flags, f)
+		}
+		for range rng.IntN(4) {
+			td.Args = append(td.Args, randString())
+		}
+		full := td.FullCmd()
+		if strings.Contains(full, "'") {
+			quoted++
+		}
+		cmd, flags, args, err := ParseLine(full)
+		if err != nil {
+			t.Fatalf("%#v rendered as %q: %v", td, full, err)
+		}
+		if cmd != td.Cmd || !reflect.DeepEqual(flags, td.Flags) || !reflect.DeepEqual(args, td.Args) {
+			t.Fatalf("flags %q and args %q rendered as %q, parsed as flags %q and args %q",
+				td.Flags, td.Args, full, flags, args)
+		}
+	}
+	if quoted < 1000 {
+		t.Fatalf("only %d directives with quotes", quoted)
+	}
+}
+
 // TestManualFlag verifies that a Flag constructed manually with an empty
 // (non-nil) Vals behaves like a flag without a value.
 func TestManualFlag(t *testing.T) {
@@ -475,7 +545,7 @@ func TestFlagValueCustomTypeErrors(t *testing.T) {
 		},
 		{
 			"cmd -x=(1, 2)", func(d *TestData) { d.FlagValue[customInt]("x") },
-			`<string>:1: flag -x: the value is a list; use a slice type`,
+			`<string>:1: flag -x: the value is a list; use a slice type (or quote the value)`,
 		},
 		{
 			"cmd -e=(1, x)", func(d *TestData) { d.FlagValue[customElems]("e") },

@@ -138,3 +138,67 @@ cmd: cmd
 flag: name="f" list=[]string{"a\u00a0b"}
 flag: name="g" list=[]string{"a\tb"}
 full: cmd -f=(a b) -g=(a	b)
+
+# Quoted values and arguments are taken literally.
+cmd -a='a b' -b='(x, y)' -c='it''s' -d='' -e='-x' -f='(' 'an arg' ')' '' 'it''s' '''q'''
+----
+cmd: cmd
+flag: name="a" value="a b"
+flag: name="b" value="(x, y)"
+flag: name="c" value="it's"
+flag: name="d" value=""
+flag: name="e" value="-x"
+flag: name="f" value="("
+arg: "an arg"
+arg: ")"
+arg: ""
+arg: "it's"
+arg: "'q'"
+full: cmd -a='a b' -b='(x, y)' -c=it's -d= -e=-x -f='(' 'an arg' ')' '' it's '''q'''
+
+# A quoted word is an argument, even if it looks like a flag (or --).
+cmd '-a' '--' '-b=1' -c
+----
+cmd: cmd
+flag: name="c"
+arg: "-a"
+arg: "--"
+arg: "-b=1"
+full: cmd -c -- -a -- -b=1
+
+# Quotes are only special at the start of an argument or of a flag value.
+cmd it's -a=b'c -l=('a', 'b') ('x y') -- 'y z' -f='q'
+----
+cmd: cmd
+flag: name="a" value="b'c"
+flag: name="l" list=[]string{"'a'", "'b'"}
+arg: "it's"
+arg: "('x y')"
+arg: "y z"
+arg: "-f='q'"
+full: cmd -a=b'c -l=('a', 'b') -- it's ('x y') 'y z' -f='q'
+
+# Quoted values keep whitespace, and double quotes are not special.
+cmd -a='  a  ' -b="x" "y" -c='"' ("z w") '	'
+----
+cmd: cmd
+flag: name="a" value="  a  "
+flag: name="b" value="\"x\""
+flag: name="c" value="\""
+arg: "\"y\""
+arg: "(\"z w\")"
+arg: "\t"
+full: cmd -a='  a  ' -b="x" -c=" "y" ("z w") '	'
+
+# The example in the documentation of ParseLine.
+cmd -exprs=(a + (b + c), d + f) -f=g(x, y) -msg='it''s (a, b' arg1 (an arg) 'another arg' -- -arg4
+----
+cmd: cmd
+flag: name="exprs" list=[]string{"a + (b + c)", "d + f"}
+flag: name="f" value="g(x, y)"
+flag: name="msg" value="it's (a, b"
+arg: "arg1"
+arg: "(an arg)"
+arg: "another arg"
+arg: "-arg4"
+full: cmd -exprs=(a + (b + c), d + f) -f=g(x, y) -msg='it''s (a, b' -- arg1 (an arg) 'another arg' -arg4
