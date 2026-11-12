@@ -64,4 +64,62 @@ wrong
 	if s := td.origString(); s != "cmd b\nx\n" {
 		t.Fatalf("unexpected origString: %q", s)
 	}
+	if s := td.DirectiveLine(); s != "cmd b" {
+		t.Fatalf("unexpected DirectiveLine: %q", s)
+	}
+}
+
+// TestDirectiveLine verifies that DirectiveLine returns the line as it is
+// written, and that it disables the check for unprocessed flags.
+func TestDirectiveLine(t *testing.T) {
+	const input = `
+  cmd  --dir=foo -a=(1,2)   'x y' \
+  --yes -- -z
+a -x
+b --y='q'
+----
+`
+	const directive = "cmd  --dir=foo -a=(1,2)   'x y'  --yes -- -z"
+	for _, tc := range []struct {
+		// forDirective and forLines indicate whether DirectiveLine is used for
+		// the directive and for the lines of its input (which are checked
+		// separately).
+		forDirective, forLines bool
+		lines                  []string
+		expected               []string
+	}{
+		{forDirective: true, forLines: true, lines: []string{directive, "a -x", "b --y='q'"}},
+		{
+			forDirective: false, forLines: true,
+			lines:    []string{"a -x", "b --y='q'"},
+			expected: []string{"<string>:2: unprocessed flags: -dir=foo -a=(1, 2) -yes"},
+		},
+		{
+			forDirective: true, forLines: false,
+			lines:    []string{directive},
+			expected: []string{"<string>:4: unprocessed flags: -x"},
+		},
+	} {
+		var lines []string
+		rec := &recorderTB{TB: t}
+		runAndWait(func() {
+			RunTestFromString(rec, input, func(t *TBWrapper[*recorderTB], d *TestData) string {
+				if tc.forDirective {
+					lines = append(lines, d.DirectiveLine())
+				}
+				for sub := range d.InputDirectives() {
+					if tc.forLines {
+						lines = append(lines, sub.DirectiveLine())
+					}
+				}
+				return ""
+			})
+		})
+		if !reflect.DeepEqual(lines, tc.lines) {
+			t.Fatalf("expected lines %q, got %q", tc.lines, lines)
+		}
+		if !reflect.DeepEqual(rec.msgs, tc.expected) {
+			t.Fatalf("expected messages %q, got %q", tc.expected, rec.msgs)
+		}
+	}
 }

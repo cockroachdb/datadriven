@@ -122,6 +122,11 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   parsed this way are not checked for being processed.
 - **`FullCmd` and `TestData.String`** render the flags (with their dashes)
   before the arguments, so expected outputs that include them change.
+- **Command lines.** A test which passes the directive line to another
+  command-line parser (e.g. by rendering each of `d.CmdArgs`) should use
+  `d.DirectiveLine()`, which returns the line as it is written (flags are
+  otherwise rendered with a single dash, even if they were written with two)
+  and disables the check that all the flags are processed.
 - **`RunTestFromString` and `-rewrite`.** `RunTestFromString` now compares the
   outputs even with `-rewrite` (in v1, its tests passed vacuously), and
   `TestData.Rewrite` is only set when the test file is being rewritten.

@@ -113,7 +113,9 @@
 // must be processed by the test (so that e.g. a misspelled flag doesn't go
 // unnoticed): the flags that are retrieved by name are processed automatically,
 // and the others (see TestData.Flags) can be marked with MarkFlagProcessed.
-// Otherwise, the directive fails.
+// Otherwise, the directive fails. A test which interprets the directive line
+// itself (e.g. as the command line of a tool) can retrieve it as it is written
+// with TestData.DirectiveLine, in which case the flags are not checked.
 //
 // When the input of a directive is a sequence of commands, with the same
 // syntax as a directive line, TestData.InputDirectives returns each of them as

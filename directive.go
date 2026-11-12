@@ -311,7 +311,9 @@ func parseValue(s string, dest reflect.Value) error {
 // be processed by the time the test function returns; otherwise, the directive
 // fails. The same goes for the flags of a directive returned by
 // InputDirectives, by the end of the iteration. Flags that are looked up by
-// name (e.g. with HasFlag, FlagValue) are marked as processed automatically.
+// name (e.g. with HasFlag, FlagValue) are marked as processed automatically. A
+// test which interprets the directive line itself can use DirectiveLine, which
+// disables this check.
 func (td *TestData) MarkFlagProcessed(name string) {
 	// The processed flags are only tracked (and checked) for the TestData passed
 	// to the test function and those returned by InputDirectives (not for a
@@ -335,6 +337,9 @@ func (td *TestData) MarkAllFlagsProcessed() {
 type processedFlags struct {
 	mu    sync.Mutex
 	names map[string]struct{}
+	// all is set if all the flags are considered processed (see
+	// TestData.DirectiveLine).
+	all bool
 }
 
 func (p *processedFlags) add(name string) {
@@ -346,10 +351,19 @@ func (p *processedFlags) add(name string) {
 	p.names[name] = struct{}{}
 }
 
+func (p *processedFlags) addAll() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.all = true
+}
+
 // unprocessed returns the flags (rendered as strings) that were not processed.
 func (p *processedFlags) unprocessed(flags []Flag) []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.all {
+		return nil
+	}
 	var res []string
 	for _, f := range flags {
 		if _, ok := p.names[f.Name]; !ok {
@@ -365,7 +379,7 @@ func (td *TestData) PopArg() string {
 	t := td.tb()
 	t.Helper()
 	if len(td.Args) == 0 {
-		t.Fatalf("PopArg: no arguments left (directive: %s)", td.directiveLine())
+		t.Fatalf("PopArg: no arguments left (directive: %s)", td.origLine())
 	}
 	arg := td.Args[0]
 	td.Args = td.Args[1:]
@@ -433,7 +447,7 @@ func (td *TestData) scanEachArg(desc string, values []any) {
 	td.checkEnoughArgs(desc, len(values))
 	for i, v := range values {
 		if err := parseValue(td.Args[i], reflect.ValueOf(v).Elem()); err != nil {
-			t.Fatalf("%s: argument %q: %v (directive: %s)", desc, td.Args[i], err, td.directiveLine())
+			t.Fatalf("%s: argument %q: %v (directive: %s)", desc, td.Args[i], err, td.origLine())
 		}
 	}
 }
@@ -466,7 +480,7 @@ func (td *TestData) checkEnoughArgs(desc string, n int) {
 	if n > len(td.Args) {
 		t := td.tb()
 		t.Helper()
-		t.Fatalf("%s: not enough arguments (directive: %s)", desc, td.directiveLine())
+		t.Fatalf("%s: not enough arguments (directive: %s)", desc, td.origLine())
 	}
 }
 
@@ -483,7 +497,7 @@ func (td *TestData) checkNoArgsLeft(desc string, n int) {
 		t := td.tb()
 		t.Helper()
 		t.Fatalf("%s: unexpected arguments: %s (directive: %s)",
-			desc, strings.Join(td.Args[n:], " "), td.directiveLine())
+			desc, strings.Join(td.Args[n:], " "), td.origLine())
 	}
 }
 

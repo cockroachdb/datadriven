@@ -629,7 +629,7 @@ type TestData struct {
 
 	// directive is the original directive line (with any continuation lines
 	// joined). Unlike FullCmd, it is not affected by changes to Flags and Args;
-	// it is used when printing errors.
+	// it is used when printing errors (see also DirectiveLine).
 	directive string
 
 	// processed contains the names of the flags that were processed (see
@@ -805,9 +805,26 @@ func (td *TestData) String() string {
 	return td.render(td.FullCmd())
 }
 
-// directiveLine returns the original directive line, or FullCmd if it is not
-// set (e.g. for a TestData constructed manually).
-func (td *TestData) directiveLine() string {
+// DirectiveLine returns the directive line as it is written in the test file
+// (with any continuation lines joined), or FullCmd if the TestData was not
+// read from a test file. It is used by tests which interpret the line
+// themselves, e.g. as the command line of a tool:
+//
+//	args := strings.Fields(td.DirectiveLine())
+//
+// Such a test is not expected to also retrieve the flags from the TestData:
+// calling DirectiveLine disables the check that all the flags are processed
+// (see MarkFlagProcessed).
+func (td *TestData) DirectiveLine() string {
+	if td.processed != nil {
+		td.processed.addAll()
+	}
+	return td.origLine()
+}
+
+// origLine returns the original directive line, or FullCmd if it is not set
+// (e.g. for a TestData constructed manually).
+func (td *TestData) origLine() string {
 	if td.directive != "" {
 		return td.directive
 	}
@@ -816,7 +833,7 @@ func (td *TestData) directiveLine() string {
 
 // origString is like String, but uses the original directive line.
 func (td *TestData) origString() string {
-	return td.render(td.directiveLine())
+	return td.render(td.origLine())
 }
 
 func (td *TestData) render(directive string) string {
