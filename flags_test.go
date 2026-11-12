@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -144,6 +145,24 @@ func TestRewriteMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if expected := "cmd\n----\nbar\n"; string(data) != expected {
+		t.Errorf("expected the file to be rewritten to %q, got %q", expected, data)
+	}
+
+	// Unprocessed flags fail the test, but the file is still rewritten.
+	if err := os.WriteFile(path, []byte("cmd -x\n----\nfoo\n\ncmd\n----\nfoo\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rec = &recorderTB{TB: t}
+	runAndWait(func() {
+		RunTest(rec, path, func(t *TBWrapper[*recorderTB], d *TestData) string { return "bar" })
+	})
+	if expected := []string{path + ":1: unprocessed flags: -x"}; !rec.Failed() || !reflect.DeepEqual(rec.msgs, expected) {
+		t.Errorf("expected the test to fail with %q, got %q", expected, rec.msgs)
+	}
+	if data, err = os.ReadFile(path); err != nil {
+		t.Fatal(err)
+	}
+	if expected := "cmd -x\n----\nbar\n\ncmd\n----\nbar\n"; string(data) != expected {
 		t.Errorf("expected the file to be rewritten to %q, got %q", expected, data)
 	}
 }

@@ -154,9 +154,20 @@ func TestInputDirectivesMessages(t *testing.T) {
 				for range d.InputDirectives() {
 					break
 				}
-				t.Logf("not reached")
+				t.Logf("after")
 			},
-			expected: []string{"<string>:3: unprocessed flags: -x=1"},
+			expected: []string{"<string>:2: after", "<string>:3: unprocessed flags: -x=1"},
+		},
+		{
+			// A TestData which was not created by RunTest fails right away.
+			name: "unprocessed-manual",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) {
+				manual := &TestData{Input: "a\nb -x\nc", T: t}
+				for sub := range manual.InputDirectives() {
+					t.Logf("cmd %s", sub.Cmd)
+				}
+			},
+			expected: []string{"<string>:2: cmd a", "<string>:2: cmd b", "<string>:2: unprocessed flags: -x"},
 		},
 		{
 			name: "break",

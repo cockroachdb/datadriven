@@ -110,7 +110,8 @@ func init() {
 // *B for a *testing.B) and annotates errors, skips and logs with the position
 // of the current directive in the test file; the same wrapper is available as
 // td.T. A failure (including t.Error) stops the processing of the file after
-// the current directive.
+// the current directive, except for flags that the function did not process
+// (see TestData.MarkFlagProcessed).
 //
 // RunTest runs each "subtest" section in a subtest, so the function must use
 // the wrapper it is passed (and not the parent testing.TB) to fail or skip the
@@ -189,6 +190,10 @@ func runTestInternal[U testing.TB](
 	// Wrappers retained beyond this point (e.g. used in a t.Cleanup function)
 	// should not annotate messages with the position of the last directive.
 	defer r.pos.set("")
+	// The errors which don't stop the processing of the file (e.g. unprocessed
+	// flags) are reported at the end; if the test stops because of another
+	// failure, they are reported after it.
+	defer r.deferred.report(innermost(t))
 	for r.Next(t) {
 		runDirectiveOrSubTest(t, r, "" /*mandatorySubTestPrefix*/, f)
 	}
@@ -425,6 +430,7 @@ func runDirective[U testing.TB](
 		w := newWrapper(t, &r.pos)
 		d.T = w
 		d.curPos = &r.pos
+		d.deferred = &r.deferred
 		// The processed flags are shared by all the copies of d. The check below
 		// uses this set even if the callback overwrites *d.
 		d.processed = processed
@@ -449,9 +455,11 @@ func runDirective[U testing.TB](
 
 	// All the flags on the directive line must have been processed; otherwise,
 	// the test is probably not doing what the test file says (e.g. a flag is
-	// misspelled).
+	// misspelled). This fails the test, but only after the output is compared
+	// (or rewritten) and the rest of the file is processed: the output can
+	// explain why a flag was not processed (e.g. an unexpected error).
 	if unprocessed := processed.unprocessed(orig.Flags); len(unprocessed) > 0 {
-		raw.Fatalf("%s: unprocessed flags: %s", orig.Pos, strings.Join(unprocessed, " "))
+		r.deferred.add(fmt.Sprintf("%s: unprocessed flags: %s", orig.Pos, strings.Join(unprocessed, " ")))
 	}
 
 	// The test has not failed, we can analyze the expected
@@ -643,6 +651,11 @@ type TestData struct {
 	// curPos is the position used by the wrapper to annotate messages (nil if
 	// the TestData was not created by RunTest or RunTestFromString).
 	curPos *directivePos
+
+	// deferred collects the errors which are reported when the processing of
+	// the test file ends (nil if the TestData was not created by RunTest or
+	// RunTestFromString).
+	deferred *deferredErrors
 }
 
 // Pos is a position in a test file.
@@ -725,9 +738,9 @@ func (td *TestData) InputLines() iter.Seq2[Pos, string] {
 //
 // While the body of the loop runs, messages reported through T are annotated
 // with the position of the current line, like for InputLines. It is a fatal
-// error if a line can't be parsed, or if an iteration of the loop finishes
-// without processing all the flags on the line (see MarkFlagProcessed), like
-// for the flags on the directive line.
+// error if a line can't be parsed. All the flags on a line must be processed
+// by the end of its iteration, like the flags on the directive line (see
+// MarkFlagProcessed).
 func (td *TestData) InputDirectives() iter.Seq[*TestData] {
 	return func(yield func(*TestData) bool) {
 		t := td.tb()
@@ -767,7 +780,16 @@ func (td *TestData) InputDirectives() iter.Seq[*TestData] {
 					processed: processed,
 				})
 				if unprocessed := processed.unprocessed(flags); len(unprocessed) > 0 && !t.Failed() {
-					t.Fatalf("unprocessed flags: %s", strings.Join(unprocessed, " "))
+					msg := "unprocessed flags: " + strings.Join(unprocessed, " ")
+					if td.deferred == nil {
+						t.Fatalf("%s", msg)
+					}
+					// Like for the flags on the directive line, the error doesn't
+					// stop the test.
+					if pos == (Pos{}) {
+						pos = td.Pos
+					}
+					td.deferred.add(fmt.Sprintf("%s: %s", pos, msg))
 				}
 				return proceed
 			})

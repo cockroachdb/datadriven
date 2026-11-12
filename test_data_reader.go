@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -30,6 +31,35 @@ type testDataReader struct {
 	// pos is the position of the directive that is currently running; it is
 	// used by the T wrappers to annotate messages.
 	pos directivePos
+	// deferred contains the errors which don't stop the processing of the file.
+	deferred deferredErrors
+}
+
+// deferredErrors collects errors which fail the test without stopping the
+// processing of the test file (e.g. unprocessed flags): the outputs of the
+// directives are still compared (or rewritten). They are reported when the
+// processing of the file ends. It is safe for concurrent use.
+type deferredErrors struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (d *deferredErrors) add(msg string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.msgs = append(d.msgs, msg)
+}
+
+// report reports (and clears) the errors.
+func (d *deferredErrors) report(t testing.TB) {
+	t.Helper()
+	d.mu.Lock()
+	msgs := d.msgs
+	d.msgs = nil
+	d.mu.Unlock()
+	for _, msg := range msgs {
+		t.Errorf("%s", msg)
+	}
 }
 
 func newTestDataReader(

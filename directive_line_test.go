@@ -97,7 +97,7 @@ b --y='q'
 		{
 			forDirective: true, forLines: false,
 			lines:    []string{directive},
-			expected: []string{"<string>:4: unprocessed flags: -x"},
+			expected: []string{"<string>:4: unprocessed flags: -x", "<string>:5: unprocessed flags: -y=q"},
 		},
 	} {
 		var lines []string

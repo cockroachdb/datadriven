@@ -432,6 +432,144 @@ func TestFlagProcessing(t *testing.T) {
 	}
 }
 
+// TestUnprocessedFlagsDeferred verifies that unprocessed flags fail the test
+// without stopping it: the outputs are still compared (or rewritten), the rest
+// of the file is processed, and the flags are reported at the end.
+func TestUnprocessedFlagsDeferred(t *testing.T) {
+	// The output of each directive is its command.
+	const matching = "a -x\n----\na\n\nb -y\n----\nb\n\nc -z -w\n----\nc\n"
+	const mismatching = "a -x\n----\na\n\nb -y\n----\nwrong\n\nc -z -w\n----\nc\n"
+	testCases := []struct {
+		name    string
+		input   string
+		rewrite bool
+		// f, if set, is called for each directive.
+		f func(t *TBWrapper[*recorderTB], d *TestData, ran *[]string)
+		// ran contains the commands that are expected to run.
+		ran       []string
+		expected  []string
+		rewritten string
+	}{
+		{
+			name:  "matching",
+			input: matching,
+			ran:   []string{"a", "b", "c"},
+			expected: []string{
+				"<string>:1: unprocessed flags: -x",
+				"<string>:5: unprocessed flags: -y",
+				"<string>:9: unprocessed flags: -z -w",
+			},
+		},
+		{
+			// A mismatch stops the test; it is reported before the flags.
+			name:  "mismatching",
+			input: mismatching,
+			ran:   []string{"a", "b"},
+			expected: []string{
+				"\n<string>:5:\n  b -y\n\nexpected:\n  wrong\n\nfound:\n  b",
+				"<string>:1: unprocessed flags: -x",
+				"<string>:5: unprocessed flags: -y",
+			},
+		},
+		{
+			name:    "rewrite",
+			input:   mismatching,
+			rewrite: true,
+			ran:     []string{"a", "b", "c"},
+			expected: []string{
+				"<string>:1: unprocessed flags: -x",
+				"<string>:5: unprocessed flags: -y",
+				"<string>:9: unprocessed flags: -z -w",
+			},
+			rewritten: matching,
+		},
+		{
+			name:     "subtest",
+			input:    "subtest foo\n\na -x\n----\na\n\nsubtest end\n\nb\n----\nb\n",
+			ran:      []string{"a", "b"},
+			expected: []string{"<string>:3: unprocessed flags: -x"},
+		},
+		{
+			// Another failure doesn't prevent the flags of the previous directives
+			// from being reported.
+			name:  "fatal",
+			input: matching,
+			f: func(t *TBWrapper[*recorderTB], d *TestData, ran *[]string) {
+				if d.Cmd == "b" {
+					t.Fatalf("fatal")
+				}
+			},
+			ran:      []string{"a", "b"},
+			expected: []string{"<string>:5: fatal", "<string>:1: unprocessed flags: -x"},
+		},
+		{
+			name:  "input-directives",
+			input: "a\nx -p\ny\nz -q -r\n----\na\n\nb\n----\nb\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData, ran *[]string) {
+				for sub := range d.InputDirectives() {
+					*ran = append(*ran, sub.Cmd)
+				}
+			},
+			ran: []string{"a", "x", "y", "z", "b"},
+			expected: []string{
+				"<string>:2: unprocessed flags: -p",
+				"<string>:4: unprocessed flags: -q -r",
+			},
+		},
+		{
+			// A loop which stops early (e.g. because of an error which is returned
+			// as the output).
+			name:  "input-directives-break",
+			input: "a -x\nx -p\ny\n----\nwrong\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData, ran *[]string) {
+				for sub := range d.InputDirectives() {
+					*ran = append(*ran, sub.Cmd)
+					break
+				}
+			},
+			ran: []string{"a", "x"},
+			expected: []string{
+				"\n<string>:1:\n  a -x\n  x -p\n  y\n\nexpected:\n  wrong\n\nfound:\n  a",
+				"<string>:2: unprocessed flags: -p",
+				"<string>:1: unprocessed flags: -x",
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &recorderTB{TB: t, keepFramework: true}
+			var ran []string
+			var rewritten []byte
+			runAndWait(func() {
+				rewritten = runTestInternal(rec, "<string>", strings.NewReader(tc.input),
+					func(t *TBWrapper[*recorderTB], d *TestData) string {
+						ran = append(ran, d.Cmd)
+						if tc.f != nil {
+							tc.f(t, d, &ran)
+						}
+						return d.Cmd
+					}, tc.rewrite)
+			})
+			if !reflect.DeepEqual(ran, tc.ran) {
+				t.Errorf("expected %q to run, got %q", tc.ran, ran)
+			}
+			// Ignore the framework logs (but not the mismatches).
+			msgs := slices.DeleteFunc(rec.msgs, func(m string) bool {
+				return strings.HasPrefix(m, "\n") && !strings.Contains(m, "\nexpected:\n")
+			})
+			if !reflect.DeepEqual(msgs, tc.expected) {
+				t.Errorf("expected:\n  %q\ngot:\n  %q", tc.expected, msgs)
+			}
+			if !rec.Failed() {
+				t.Errorf("the test did not fail")
+			}
+			if string(rewritten) != tc.rewritten {
+				t.Errorf("expected the file to be rewritten as %q, got %q", tc.rewritten, rewritten)
+			}
+		})
+	}
+}
+
 // TestFullCmdRoundTrip verifies that FullCmd renders arbitrary values and
 // arguments such that they are parsed back unchanged.
 func TestFullCmdRoundTrip(t *testing.T) {

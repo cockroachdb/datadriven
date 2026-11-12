@@ -40,8 +40,10 @@ quotes inside a quoted value stand for a quote). Parentheses must be balanced
 in every word that is not quoted: a notation like `[a,b)` (e.g. a half-open
 span) must be quoted (`'[a,b)'`) or changed.
 
-All the flags must be processed by the test, otherwise the directive fails;
-this catches misspelled flags. Flags that the test retrieves by name are
+All the flags must be processed by the test, otherwise the test fails (after
+the rest of the file is processed); this catches misspelled flags. It applies
+even if the test returns early for a directive (e.g. with an expected error),
+so a flag that the test doesn't get to use must be removed from the test file. Flags that the test retrieves by name are
 processed automatically; flags that are processed by iterating over
 `d.Flags` must be marked with `d.MarkFlagProcessed` (or
 `d.MarkAllFlagsProcessed`).
