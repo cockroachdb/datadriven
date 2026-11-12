@@ -59,9 +59,9 @@ unknown command
 func TestParseLine(t *testing.T) {
 	RunTestFromString(t, `
 parse
-xx -a=b -a=c
+xx -a=b -a=c --a
 ----
-cannot parse directive at column 9 (flag -a is repeated): xx -a=b -a=c
+"xx" [-a=b -a=c -a] []
 
 parse
 xx -a=b x -b=c -c=(1,2,3) y

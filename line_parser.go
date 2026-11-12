@@ -16,7 +16,6 @@ package datadriven
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -36,7 +35,8 @@ import (
 //
 // Values can contain parentheses (including whitespace and commas inside
 // them); a value is a list if it is a single parenthesized group, and only the
-// top-level commas inside it separate the values. A flag can't be repeated.
+// top-level commas inside it separate the values. A flag can be repeated (see
+// TestData.FlagValues).
 //
 // A positional argument or the value of a flag can be written between single
 // quotes, in which case it is taken literally: it can contain whitespace and
@@ -76,9 +76,6 @@ func ParseLine(line string) (cmd string, flags []Flag, args []string, err error)
 			f, err := p.flag()
 			if err != nil {
 				return "", nil, nil, err
-			}
-			if slices.ContainsFunc(flags, func(g Flag) bool { return g.Name == f.Name }) {
-				return "", nil, nil, p.errorf(start, "flag -%s is repeated", f.Name)
 			}
 			flags = append(flags, f)
 

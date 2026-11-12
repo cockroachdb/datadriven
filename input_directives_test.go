@@ -214,10 +214,11 @@ func TestInputDirectivesMessages(t *testing.T) {
 			name: "repeated-flag",
 			file: "\ncmd\na -x -x\n----\n",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) {
-				for range d.InputDirectives() {
+				for sub := range d.InputDirectives() {
+					sub.BoolFlag("x")
 				}
 			},
-			expected: []string{"<string>:3: cannot parse directive at column 6 (flag -x is repeated): a -x -x"},
+			expected: []string{"<string>:3: flag -x is repeated (see FlagValues)"},
 		},
 		{
 			// The flags on the lines don't count as flags of the directive.

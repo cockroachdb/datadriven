@@ -31,7 +31,7 @@
 // arguments, similar to a command line: the words that start with - (or --)
 // followed by a letter are flags, and the other words (as well as all the words
 // after a -- word) are positional arguments. A flag can have no value, a single
-// value, or a list of values, and it can't be repeated. An argument or a single
+// value, or a list of values, and it can be repeated. An argument or a single
 // value can be written between single quotes (e.g. -msg='hello world'), in
 // which case it can contain whitespace. See ParseLine for the details.
 //
@@ -106,7 +106,8 @@
 // BoolFlag checks for a flag that must not have a value (e.g. -verbose), and
 // FlagValue and FlagValueOr parse the value of a flag into a given type (a list
 // value, e.g. -names=(a, b), is retrieved as a slice; a type defined by the
-// test can implement encoding.TextUnmarshaler). The positional arguments
+// test can implement encoding.TextUnmarshaler). A flag can only be repeated if
+// the test retrieves it with FlagValues. The positional arguments
 // are in TestData.Args (see also PopArg, PopArgs, ScanArgs). All the flags
 // must be processed by the test (so that e.g. a misspelled flag doesn't go
 // unnoticed): the flags that are retrieved by name are processed automatically,

@@ -48,6 +48,11 @@ slices -ds=(1s, 2m) -d1=3s -ns=(a, b) -ni=(4, 5)
 ----
 ds=[1s 2m0s] d1=[3s] ns=datadriven.namedSlice{"a", "b"} ni=[]datadriven.namedInt{4, 5}
 
+# A flag can be repeated if it is retrieved with FlagValues.
+repeated -p=(a, 1) -n=3 -p=(b, 2) -p=c -x --p='d e' -q -q
+----
+p=[[a 1] [b 2] [c] [d e]] n=[3] d=[] missing-nil=true has-p=true has-q=true x=true full=repeated -p=(a, 1) -n=3 -p=(b, 2) -p=c -x -p='d e' -q -q
+
 # A quoted value is a single value, which is not trimmed if it is a string.
 quoted -s='  a b ' -l='(x, y)' -n=' 5 ' -ns='a, b' ' c '
 ----
@@ -63,6 +68,10 @@ s="  a b " l="(x, y)" n=5 ns=datadriven.namedSlice{"a, b"} arg=" c "
 			return fmt.Sprintf("n=%d m=%d", d.FlagValueOr("n", 1), d.FlagValueOr("m", 10))
 		case "bool":
 			return fmt.Sprintf("a=%t b=%t has-c=%t", d.BoolFlag("a"), d.BoolFlag("b"), d.HasFlag("c"))
+		case "repeated":
+			return fmt.Sprintf("p=%v n=%v d=%v missing-nil=%t has-p=%t has-q=%t x=%t full=%s",
+				d.FlagValues[[]string]("p"), d.FlagValues[int]("n"), d.FlagValues[time.Duration]("d"),
+				d.FlagValues[string]("missing") == nil, d.HasFlag("p"), d.HasFlag("q"), d.BoolFlag("x"), d.FullCmd())
 		case "quoted":
 			return fmt.Sprintf("s=%q l=%q n=%d ns=%#v arg=%q",
 				d.FlagValue[string]("s"), d.FlagValue[string]("l"), d.FlagValue[int]("n"),
@@ -153,6 +162,28 @@ func TestFlagValueErrors(t *testing.T) {
 			`<string>:1: flag -n: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
 		},
 		{"cmd -n", func(d *TestData) { d.FlagValueOr("n", 1) }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		// A repeated flag can only be retrieved with FlagValues.
+		{"cmd -n=1 -n=2", func(d *TestData) { d.FlagValue[int]("n") }, `<string>:1: flag -n is repeated (see FlagValues)`},
+		{"cmd -n=1 -n=2", func(d *TestData) { d.FlagValue[[]int]("n") }, `<string>:1: flag -n is repeated (see FlagValues)`},
+		{"cmd -n=1 --n=1", func(d *TestData) { d.FlagValueOr("n", 0) }, `<string>:1: flag -n is repeated (see FlagValues)`},
+		{"cmd -v -x -v", func(d *TestData) { d.BoolFlag("v") }, `<string>:1: flag -v is repeated (see FlagValues)`},
+		{"cmd -n=1 -n", func(d *TestData) { d.FlagValues[int]("n") }, `<string>:1: flag -n: no value (see BoolFlag)`},
+		{
+			"cmd -n=1 -n=x", func(d *TestData) { d.FlagValues[int]("n") },
+			`<string>:1: flag -n=x: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
+		},
+		{
+			"cmd -n=1 -n=(2, 3)", func(d *TestData) { d.FlagValues[int]("n") },
+			`<string>:1: flag -n=(2, 3): the value is a list; use a slice type (or quote the value)`,
+		},
+		{
+			"cmd -n=(1, 2) -n=(3, x)", func(d *TestData) { d.FlagValues[[]int]("n") },
+			`<string>:1: flag -n=(3, x): value 1: parse "x" as int: strconv.ParseInt: parsing "x": invalid syntax`,
+		},
+		{
+			"cmd", func(d *TestData) { d.FlagValues[struct{}]("n") },
+			`<string>:1: flag -n: unsupported type struct {} (see FlagValue)`,
+		},
 		{"cmd -a=1", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=1`},
 		{"cmd -a=", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=`},
 		{"cmd -a=()", func(d *TestData) { d.BoolFlag("a") }, `<string>:1: flag -a must not have a value: -a=()`},
@@ -350,10 +381,21 @@ func TestFlagProcessing(t *testing.T) {
 			expected: []string{"<string>:1: fatal"},
 		},
 		{
+			// All the occurrences of a repeated flag are unprocessed.
 			name:     "repeated",
-			input:    "cmd -x=1 -x=2\n----\n",
+			input:    "cmd -x=1 -y --x=2\n----\n",
 			f:        func(t *TBWrapper[*recorderTB], d *TestData) string { return "" },
-			expected: []string{"<string>:1: cannot parse directive at column 10 (flag -x is repeated): cmd -x=1 -x=2"},
+			expected: []string{"<string>:1: unprocessed flags: -x=1 -y -x=2"},
+		},
+		{
+			name:  "repeated-processed",
+			input: "cmd -x=1 -y -x=2 -z -z\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.FlagValues[int]("x")
+				d.BoolFlag("y")
+				d.HasFlag("z")
+				return ""
+			},
 		},
 		{
 			// The flags on the directive line must be processed, even if the test

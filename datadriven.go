@@ -589,8 +589,9 @@ type TestData struct {
 
 	// Flags contains the flags on the directive line, in order (see ParseLine).
 	// They are usually retrieved by name (with HasFlag, BoolFlag, FlagValue,
-	// FlagValueOr). All the flags on the directive line must be processed by
-	// the test (see MarkFlagProcessed).
+	// FlagValueOr, or FlagValues for a flag that can be repeated). All the flags
+	// on the directive line must be processed by the test (see
+	// MarkFlagProcessed).
 	Flags []Flag
 
 	// Args contains the positional arguments on the directive line (the words
@@ -620,7 +621,7 @@ type TestData struct {
 	// the position of the directive (see TBWrapper).
 	//
 	// When a TestData is constructed manually, T must be set before using
-	// BoolFlag, FlagValue, FlagValueOr, PopArg, PopArgs, ScanArgs,
+	// BoolFlag, FlagValue, FlagValueOr, FlagValues, PopArg, PopArgs, ScanArgs,
 	// InputDirectives, Retry, RetryFor or Fatalf.
 	T testing.TB
 

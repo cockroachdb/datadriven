@@ -19,9 +19,11 @@ files must be updated accordingly: the arguments that the test reads by key
 (e.g. with `ScanArgs` or `HasArg`) become flags, and the words that the test
 reads by position (e.g. with `d.CmdArgs[0].Key`) stay as they are.
 
-A flag can't be repeated. In v1, a repeated key was allowed, and the first
-occurrence was used; code that relies on this (e.g. by appending default
-arguments to `d.CmdArgs`, so that they can be overridden) must be changed.
+A flag can only be repeated if the test retrieves all its values, with
+`d.FlagValues[T]("x")` (one value per occurrence, in order); the other methods
+fail if the flag is repeated. In v1, the first occurrence of a repeated key was
+used; code that relies on this (e.g. by appending default arguments to
+`d.CmdArgs`, so that they can be overridden) must be changed.
 Also, `-key=(value)` is a list with one value (which can only be retrieved as a
 slice), and `-key=()` is an empty list; in v1, both were a single value. A
 single value with whitespace is written between single quotes:

@@ -59,31 +59,38 @@ func (f Flag) String() string {
 	}
 }
 
-func (td *TestData) lookupFlag(name string) (Flag, bool) {
-	for _, f := range td.Flags {
-		if f.Name == name {
-			return f, true
-		}
+// uniqueFlag returns the flag with the given name, if it is present. It is a
+// fatal error if the flag is repeated.
+func (td *TestData) uniqueFlag(name string) (Flag, bool) {
+	hasName := func(f Flag) bool { return f.Name == name }
+	i := slices.IndexFunc(td.Flags, hasName)
+	if i == -1 {
+		return Flag{}, false
 	}
-	return Flag{}, false
+	if slices.ContainsFunc(td.Flags[i+1:], hasName) {
+		t := td.tb()
+		t.Helper()
+		t.Fatalf("flag -%s is repeated (see FlagValues)", name)
+	}
+	return td.Flags[i], true
 }
 
-// HasFlag returns true if the flag is present (with or without a value), and
-// marks it as processed.
+// HasFlag returns true if the flag is present (with or without a value, and
+// possibly repeated), and marks it as processed.
 func (td *TestData) HasFlag(name string) bool {
 	td.MarkFlagProcessed(name)
-	_, ok := td.lookupFlag(name)
-	return ok
+	return slices.ContainsFunc(td.Flags, func(f Flag) bool { return f.Name == name })
 }
 
 // BoolFlag returns true if a flag without a value (e.g. -verbose) is present,
-// and marks it as processed. It is a fatal error if the flag has a value.
+// and marks it as processed. It is a fatal error if the flag has a value, or if
+// it is repeated.
 func (td *TestData) BoolFlag(name string) bool {
+	t := td.tb()
+	t.Helper()
 	td.MarkFlagProcessed(name)
-	f, ok := td.lookupFlag(name)
+	f, ok := td.uniqueFlag(name)
 	if ok && f.hasValue() {
-		t := td.tb()
-		t.Helper()
 		t.Fatalf("flag -%s must not have a value: %s", name, f)
 	}
 	return ok
@@ -120,14 +127,14 @@ func (td *TestData) BoolFlag(name string) bool {
 // ParseLine): -name=(a b) is a list.
 //
 // It is a fatal error if V is not one of these types, if the flag doesn't
-// exist, if it doesn't have a value (see BoolFlag), or if the value can't be
-// parsed as a V.
+// exist, if it doesn't have a value (see BoolFlag), if the value can't be
+// parsed as a V, or if the flag is repeated (see FlagValues).
 func (td *TestData) FlagValue[V any](name string) V {
 	t := td.tb()
 	t.Helper()
 	td.MarkFlagProcessed(name)
 	td.checkFlagType(name, reflect.TypeFor[V]())
-	f, ok := td.lookupFlag(name)
+	f, ok := td.uniqueFlag(name)
 	if !ok {
 		t.Fatalf("missing flag: -%s", name)
 	}
@@ -144,7 +151,7 @@ func (td *TestData) FlagValueOr[V any](name string, def V) V {
 	t.Helper()
 	td.MarkFlagProcessed(name)
 	td.checkFlagType(name, reflect.TypeFor[V]())
-	f, ok := td.lookupFlag(name)
+	f, ok := td.uniqueFlag(name)
 	if !ok {
 		return def
 	}
@@ -153,6 +160,42 @@ func (td *TestData) FlagValueOr[V any](name string, def V) V {
 		t.Fatalf("flag -%s: %v", name, err)
 	}
 	return v
+}
+
+// FlagValues returns the values of a flag which can be repeated, in order, each
+// parsed as a V (see FlagValue), and marks the flag as processed. It returns
+// nil if the flag doesn't exist. For example, for
+//
+//	cmd -probe=(a, 1) -probe=(b, 2) -level=3
+//
+// the following would be valid:
+//
+//	probes := td.FlagValues[[]string]("probe") // [[a 1] [b 2]]
+//	levels := td.FlagValues[int]("level") // [3]
+//
+// A repeated flag can only be retrieved with FlagValues: BoolFlag, FlagValue
+// and FlagValueOr fail instead of using one of the occurrences.
+//
+// It is a fatal error if V is not a type supported by FlagValue, or if an
+// occurrence of the flag doesn't have a value or its value can't be parsed as a
+// V.
+func (td *TestData) FlagValues[V any](name string) []V {
+	t := td.tb()
+	t.Helper()
+	td.MarkFlagProcessed(name)
+	td.checkFlagType(name, reflect.TypeFor[V]())
+	var vals []V
+	for _, f := range td.Flags {
+		if f.Name != name {
+			continue
+		}
+		v, err := flagValue[V](f)
+		if err != nil {
+			t.Fatalf("flag %s: %v", f, err)
+		}
+		vals = append(vals, v)
+	}
+	return vals
 }
 
 // checkFlagType fails the test if typ is not a type supported by FlagValue.
