@@ -43,7 +43,14 @@ span) must be quoted (`'[a,b)'`) or changed.
 All the flags must be processed by the test, otherwise the test fails (after
 the rest of the file is processed); this catches misspelled flags. It applies
 even if the test returns early for a directive (e.g. with an expected error),
-so a flag that the test doesn't get to use must be removed from the test file. Flags that the test retrieves by name are
+so a flag that the test doesn't get to use must be removed from the test file.
+
+An argument which was not converted to a flag (e.g. `sync` or `lower=a`, where
+the test now looks up the flags `-sync` or `-lower`) is a positional argument,
+which the test would silently ignore. The test fails for these as well, as
+long as it looks up the flag while running that directive. An argument which
+just happens to have the name of such a flag must be quoted (`'sync'`) or put
+after a `--` word. Flags that the test retrieves by name are
 processed automatically; flags that are processed by iterating over
 `d.Flags` must be marked with `d.MarkFlagProcessed` (or
 `d.MarkAllFlagsProcessed`).

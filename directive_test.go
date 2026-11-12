@@ -413,6 +413,69 @@ func TestFlagProcessing(t *testing.T) {
 			expected: []string{"<string>:1: unprocessed flags: -a"},
 		},
 		{
+			// An argument with the name of a flag that the test looks up (and
+			// which is not on the line) is probably a flag which is missing the
+			// dash.
+			name:  "missing-dash",
+			input: "cmd a sync lower=x upper=(y, z) n=1 verbose=false other=1 =2 5=3\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.HasFlag("sync")
+				d.FlagValueOr("lower", "")
+				d.FlagValues[[]string]("upper")
+				d.BoolFlag("verbose")
+				d.MarkFlagProcessed("n")
+				// These can't be flags.
+				d.HasFlag("")
+				d.HasFlag("5")
+				return ""
+			},
+			expected: []string{
+				`<string>:1: argument "sync" looks like the flag -sync without the dash (if it is an argument, quote it or put it after --)`,
+				`<string>:1: argument "lower=x" looks like the flag -lower without the dash (if it is an argument, quote it or put it after --)`,
+				`<string>:1: argument "upper=(y, z)" looks like the flag -upper without the dash (if it is an argument, quote it or put it after --)`,
+				`<string>:1: argument "n=1" looks like the flag -n without the dash (if it is an argument, quote it or put it after --)`,
+				`<string>:1: argument "verbose=false" looks like the flag -verbose without the dash (if it is an argument, quote it or put it after --)`,
+			},
+		},
+		{
+			// Quoted arguments, the arguments after --, and those with the name of
+			// a flag which is on the line are not flags which are missing the dash.
+			name:  "missing-dash-arguments",
+			input: "cmd 'sync' x 'lower=a' -x=1 -- sync lower=a\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.HasFlag("sync")
+				d.FlagValueOr("lower", "")
+				d.FlagValue[int]("x")
+				return ""
+			},
+		},
+		{
+			name:  "missing-dash-unprocessed",
+			input: "cmd sync -x\n----\n\ncmd sync\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.HasFlag("sync")
+				return ""
+			},
+			rewrite: true,
+			// The test is not stopped.
+			expected: []string{
+				"<string>:1: unprocessed flags: -x",
+				`<string>:1: argument "sync" looks like the flag -sync without the dash (if it is an argument, quote it or put it after --)`,
+				`<string>:4: argument "sync" looks like the flag -sync without the dash (if it is an argument, quote it or put it after --)`,
+			},
+		},
+		{
+			// A test which uses the directive line as it is does not have flags
+			// which are missing the dash.
+			name:  "missing-dash-directive-line",
+			input: "cmd sync\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) string {
+				d.HasFlag("sync")
+				d.DirectiveLine()
+				return ""
+			},
+		},
+		{
 			name:     "subtest-with-flags",
 			input:    "subtest foo -x\n\nsubtest end\n",
 			f:        func(t *TBWrapper[*recorderTB], d *TestData) string { return "" },

@@ -320,6 +320,12 @@ func parseValue(s string, dest reflect.Value) error {
 // directive is still compared with the expected output (or rewritten, with
 // -rewrite), and the rest of the test file is processed. They are reported
 // when the processing of the file ends, after any other failure.
+//
+// The same happens for a positional argument of the form name or name=value
+// (not quoted, and not after a -- word) when the test looked up a flag with
+// that name and the flag is not on the line: it is most likely a flag which is
+// missing the dash (e.g. sync instead of -sync), which would otherwise be
+// silently ignored.
 func (td *TestData) MarkFlagProcessed(name string) {
 	// The processed flags are only tracked (and checked) for the TestData passed
 	// to the test function and those returned by InputDirectives (not for a
@@ -363,20 +369,42 @@ func (p *processedFlags) addAll() {
 	p.all = true
 }
 
-// unprocessed returns the flags (rendered as strings) that were not processed.
-func (p *processedFlags) unprocessed(flags []Flag) []string {
+// check returns the problems with the flags and the arguments of a directive
+// line (see parseLine), once the test has processed it:
+//   - the flags that were not processed;
+//   - the arguments that are probably flags which are missing the dash: those
+//     of the form name or name=value, where name is a flag that the test looked
+//     up and which is not on the line. Such a flag is otherwise silently
+//     ignored.
+func (p *processedFlags) check(flags []Flag, bareArgs []string) []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.all {
 		return nil
 	}
-	var res []string
+	var problems, unprocessed []string
 	for _, f := range flags {
 		if _, ok := p.names[f.Name]; !ok {
-			res = append(res, f.String())
+			unprocessed = append(unprocessed, f.String())
 		}
 	}
-	return res
+	if len(unprocessed) > 0 {
+		problems = append(problems, "unprocessed flags: "+strings.Join(unprocessed, " "))
+	}
+	for _, arg := range bareArgs {
+		name, _, _ := strings.Cut(arg, "=")
+		if _, ok := p.names[name]; !ok || !isFlag("-"+name) {
+			continue
+		}
+		if slices.ContainsFunc(flags, func(f Flag) bool { return f.Name == name }) {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf(
+			"argument %q looks like the flag -%s without the dash (if it is an argument, quote it or put it after --)",
+			arg, name,
+		))
+	}
+	return problems
 }
 
 // PopArg removes the first positional argument from Args and returns it. It is

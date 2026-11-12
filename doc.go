@@ -119,6 +119,12 @@
 // as it is written with TestData.DirectiveLine, in which case the flags are
 // not checked.
 //
+// A flag which is written without the dash is a positional argument, so a
+// test which looks up the flag does not find it. To catch this mistake, the
+// test also fails if an argument (which is not quoted, and not after a --
+// word) has the form name or name=value, where name is a flag that the test
+// looked up and which is not on the line.
+//
 // When the input of a directive is a sequence of commands, with the same
 // syntax as a directive line, TestData.InputDirectives returns each of them as
 // a TestData (with the same flag and argument API, and the same check that all

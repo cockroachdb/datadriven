@@ -458,8 +458,10 @@ func runDirective[U testing.TB](
 	// misspelled). This fails the test, but only after the output is compared
 	// (or rewritten) and the rest of the file is processed: the output can
 	// explain why a flag was not processed (e.g. an unexpected error).
-	if unprocessed := processed.unprocessed(orig.Flags); len(unprocessed) > 0 {
-		r.deferred.add(fmt.Sprintf("%s: unprocessed flags: %s", orig.Pos, strings.Join(unprocessed, " ")))
+	// The same goes for an argument which is probably a flag that is missing
+	// the dash.
+	for _, problem := range processed.check(orig.Flags, orig.bareArgs) {
+		r.deferred.add(fmt.Sprintf("%s: %s", orig.Pos, problem))
 	}
 
 	// The test has not failed, we can analyze the expected
@@ -640,6 +642,10 @@ type TestData struct {
 	// it is used when printing errors (see also DirectiveLine).
 	directive string
 
+	// bareArgs contains the arguments on the directive line which could be
+	// flags that are missing the dash (see parseLine).
+	bareArgs []string
+
 	// processed contains the names of the flags that were processed (see
 	// MarkFlagProcessed).
 	processed *processedFlags
@@ -739,8 +745,8 @@ func (td *TestData) InputLines() iter.Seq2[Pos, string] {
 // While the body of the loop runs, messages reported through T are annotated
 // with the position of the current line, like for InputLines. It is a fatal
 // error if a line can't be parsed. All the flags on a line must be processed
-// by the end of its iteration, like the flags on the directive line (see
-// MarkFlagProcessed).
+// by the end of its iteration, and its arguments are checked for flags which
+// are missing the dash, like for the directive line (see MarkFlagProcessed).
 func (td *TestData) InputDirectives() iter.Seq[*TestData] {
 	return func(yield func(*TestData) bool) {
 		t := td.tb()
@@ -758,7 +764,7 @@ func (td *TestData) InputDirectives() iter.Seq[*TestData] {
 			}
 			proceed := td.withPos(pos, func() bool {
 				t.Helper()
-				cmd, flags, args, err := ParseLine(line)
+				cmd, flags, args, bareArgs, err := parseLine(line)
 				if err != nil {
 					t.Fatalf("%v", err)
 				}
@@ -774,22 +780,23 @@ func (td *TestData) InputDirectives() iter.Seq[*TestData] {
 					Cmd:       cmd,
 					Flags:     slices.Clone(flags),
 					Args:      args,
+					bareArgs:  bareArgs,
 					Rewrite:   td.Rewrite,
 					T:         td.T,
 					directive: line,
 					processed: processed,
 				})
-				if unprocessed := processed.unprocessed(flags); len(unprocessed) > 0 && !t.Failed() {
-					msg := "unprocessed flags: " + strings.Join(unprocessed, " ")
+				if problems := processed.check(flags, bareArgs); len(problems) > 0 && !t.Failed() {
 					if td.deferred == nil {
-						t.Fatalf("%s", msg)
+						t.Fatalf("%s", strings.Join(problems, "\n"))
 					}
-					// Like for the flags on the directive line, the error doesn't
-					// stop the test.
+					// Like for the directive line, the problems don't stop the test.
 					if pos == (Pos{}) {
 						pos = td.Pos
 					}
-					td.deferred.add(fmt.Sprintf("%s: %s", pos, msg))
+					for _, problem := range problems {
+						td.deferred.add(fmt.Sprintf("%s: %s", pos, problem))
+					}
 				}
 				return proceed
 			})
@@ -835,8 +842,9 @@ func (td *TestData) String() string {
 //	args := strings.Fields(td.DirectiveLine())
 //
 // Such a test is not expected to also retrieve the flags from the TestData:
-// calling DirectiveLine disables the check that all the flags are processed
-// (see MarkFlagProcessed).
+// calling DirectiveLine disables the checks that all the flags are processed
+// and that the arguments are not flags which are missing the dash (see
+// MarkFlagProcessed).
 func (td *TestData) DirectiveLine() string {
 	if td.processed != nil {
 		td.processed.addAll()

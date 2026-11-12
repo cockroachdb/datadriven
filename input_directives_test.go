@@ -170,6 +170,36 @@ func TestInputDirectivesMessages(t *testing.T) {
 			expected: []string{"<string>:2: cmd a", "<string>:2: cmd b", "<string>:2: unprocessed flags: -x"},
 		},
 		{
+			// The arguments of a line are checked for flags which are missing the
+			// dash.
+			name: "missing-dash",
+			file: "\ncmd sync\nset a sync\nset b -sync\nset 'sync'\n----\n",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) {
+				for sub := range d.InputDirectives() {
+					sub.HasFlag("sync")
+				}
+				t.Logf("after")
+			},
+			expected: []string{
+				"<string>:2: after",
+				`<string>:3: argument "sync" looks like the flag -sync without the dash (if it is an argument, quote it or put it after --)`,
+			},
+		},
+		{
+			name: "missing-dash-manual",
+			f: func(t *TBWrapper[*recorderTB], d *TestData) {
+				manual := &TestData{Input: "a\nb sync\nc", T: t}
+				for sub := range manual.InputDirectives() {
+					t.Logf("cmd %s", sub.Cmd)
+					sub.HasFlag("sync")
+				}
+			},
+			expected: []string{
+				"<string>:2: cmd a", "<string>:2: cmd b",
+				`<string>:2: argument "sync" looks like the flag -sync without the dash (if it is an argument, quote it or put it after --)`,
+			},
+		},
+		{
 			name: "break",
 			f: func(t *TBWrapper[*recorderTB], d *TestData) {
 				for sub := range d.InputDirectives() {

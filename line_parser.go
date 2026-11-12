@@ -53,46 +53,57 @@ import (
 // (with value "g(x, y)") and -msg (with value "it's (a, b"), and the arguments
 // "arg1", "(an arg)", "another arg" and "-arg4".
 func ParseLine(line string) (cmd string, flags []Flag, args []string, err error) {
+	cmd, flags, args, _, err = parseLine(line)
+	return cmd, flags, args, err
+}
+
+// parseLine implements ParseLine. It also returns the arguments that are
+// written like flags except for the dash: without quotes, and before any "--"
+// word (see processedFlags.check).
+func parseLine(line string) (cmd string, flags []Flag, args, bareArgs []string, err error) {
 	p := lineParser{line: strings.TrimSpace(line)}
 	onlyArgs := false
 	for first := true; ; first = false {
 		p.skipSpace()
 		if p.pos == len(p.line) {
-			return cmd, flags, args, nil
+			return cmd, flags, args, bareArgs, nil
 		}
 		start := p.pos
 		switch rest := p.line[start:]; {
 		case first && (rest[0] == '\'' || isFlag(rest)):
-			return "", nil, nil, p.errorf(start, "expected a command")
+			return "", nil, nil, nil, p.errorf(start, "expected a command")
 
 		case rest[0] == '\'':
 			arg, err := p.quotedWord()
 			if err != nil {
-				return "", nil, nil, err
+				return "", nil, nil, nil, err
 			}
 			args = append(args, arg)
 
 		case !onlyArgs && isFlag(rest):
 			f, err := p.flag()
 			if err != nil {
-				return "", nil, nil, err
+				return "", nil, nil, nil, err
 			}
 			flags = append(flags, f)
 
 		default:
 			w, err := p.plainWord()
 			if err != nil {
-				return "", nil, nil, err
+				return "", nil, nil, nil, err
 			}
 			switch {
 			case first && w == "--":
-				return "", nil, nil, p.errorf(start, "expected a command")
+				return "", nil, nil, nil, p.errorf(start, "expected a command")
 			case first:
 				cmd = w
 			case w == "--" && !onlyArgs:
 				onlyArgs = true
 			default:
 				args = append(args, w)
+				if !onlyArgs {
+					bareArgs = append(bareArgs, w)
+				}
 			}
 		}
 	}
