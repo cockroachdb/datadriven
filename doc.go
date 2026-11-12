@@ -108,7 +108,8 @@
 // value, e.g. -names=(a, b), is retrieved as a slice; a type defined by the
 // test can implement encoding.TextUnmarshaler). A flag can only be repeated if
 // the test retrieves it with FlagValues. The positional arguments
-// are in TestData.Args (see also PopArg, PopArgs, ScanArgs). All the flags
+// are in TestData.Args (see also SingleArg, TwoArgs, PopArg, PopArgs,
+// ScanArgs). All the flags
 // must be processed by the test (so that e.g. a misspelled flag doesn't go
 // unnoticed): the flags that are retrieved by name are processed automatically,
 // and the others (see TestData.Flags) can be marked with MarkFlagProcessed.

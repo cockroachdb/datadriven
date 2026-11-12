@@ -372,6 +372,22 @@ func (td *TestData) PopArg() string {
 	return arg
 }
 
+// SingleArg returns the positional argument of a directive which takes exactly
+// one. It is a fatal error if Args doesn't have exactly one argument.
+func (td *TestData) SingleArg() string {
+	td.tb().Helper()
+	td.checkNumArgs("SingleArg", 1)
+	return td.Args[0]
+}
+
+// TwoArgs returns the positional arguments of a directive which takes exactly
+// two. It is a fatal error if Args doesn't have exactly two arguments.
+func (td *TestData) TwoArgs() (string, string) {
+	td.tb().Helper()
+	td.checkNumArgs("TwoArgs", 2)
+	return td.Args[0], td.Args[1]
+}
+
 // PopArgs parses the first len(values) positional arguments into the given
 // values, one argument per value; it then removes these arguments from Args.
 // For example, for
@@ -400,7 +416,8 @@ func (td *TestData) PopArgs(values ...any) {
 }
 
 // ScanArgs is like PopArgs, except that it is a fatal error if there are more
-// arguments than values. Args is not modified.
+// arguments than values. Args is not modified. See SingleArg and TwoArgs for
+// directives which take one or two arguments that don't need to be parsed.
 func (td *TestData) ScanArgs(values ...any) {
 	td.tb().Helper()
 	td.scanEachArg("ScanArgs", values)
@@ -413,9 +430,7 @@ func (td *TestData) scanEachArg(desc string, values []any) {
 	t := td.tb()
 	t.Helper()
 	td.checkPointers(desc, values)
-	if len(values) > len(td.Args) {
-		t.Fatalf("%s: not enough arguments (directive: %s)", desc, td.directiveLine())
-	}
+	td.checkEnoughArgs(desc, len(values))
 	for i, v := range values {
 		if err := parseValue(td.Args[i], reflect.ValueOf(v).Elem()); err != nil {
 			t.Fatalf("%s: argument %q: %v (directive: %s)", desc, td.Args[i], err, td.directiveLine())
@@ -444,6 +459,22 @@ func (td *TestData) checkPointers(desc string, values []any) {
 			t.Fatalf("%s: value %d: unsupported type %s (see FlagValue)", desc, i, typ)
 		}
 	}
+}
+
+// checkEnoughArgs fails the test if there are fewer than n arguments.
+func (td *TestData) checkEnoughArgs(desc string, n int) {
+	if n > len(td.Args) {
+		t := td.tb()
+		t.Helper()
+		t.Fatalf("%s: not enough arguments (directive: %s)", desc, td.directiveLine())
+	}
+}
+
+// checkNumArgs fails the test if the number of arguments is not n.
+func (td *TestData) checkNumArgs(desc string, n int) {
+	td.tb().Helper()
+	td.checkEnoughArgs(desc, n)
+	td.checkNoArgsLeft(desc, n)
 }
 
 // checkNoArgsLeft fails the test if there are arguments after the first n.

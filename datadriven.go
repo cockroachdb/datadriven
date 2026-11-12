@@ -595,7 +595,9 @@ type TestData struct {
 	Flags []Flag
 
 	// Args contains the positional arguments on the directive line (the words
-	// that are not flags). PopArg and PopArgs remove arguments from the front.
+	// that are not flags). PopArg and PopArgs remove arguments from the front;
+	// SingleArg, TwoArgs and ScanArgs retrieve all the arguments of a directive
+	// which takes a fixed number of them.
 	Args []string
 
 	// Input is the text between the directive line and the ---- separator, with
@@ -622,7 +624,7 @@ type TestData struct {
 	//
 	// When a TestData is constructed manually, T must be set before using
 	// BoolFlag, FlagValue, FlagValueOr, FlagValues, PopArg, PopArgs, ScanArgs,
-	// InputDirectives, Retry, RetryFor or Fatalf.
+	// SingleArg, TwoArgs, InputDirectives, Retry, RetryFor or Fatalf.
 	T testing.TB
 
 	// directive is the original directive line (with any continuation lines

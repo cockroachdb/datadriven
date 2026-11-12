@@ -63,6 +63,16 @@ func popHandler(t testing.TB, d *TestData) string {
 		fmt.Fprintf(&buf, "i=%d s=%q\n", i, s)
 	case "scan-args-none":
 		d.ScanArgs()
+	case "single-arg":
+		d.BoolFlag("x")
+		fmt.Fprintf(&buf, "arg=%q\n", d.SingleArg())
+	case "two-args":
+		d.BoolFlag("x")
+		a, b := d.TwoArgs()
+		fmt.Fprintf(&buf, "a=%q b=%q\n", a, b)
+	case "pop-then-single-arg":
+		fmt.Fprintf(&buf, "popped %q\n", d.PopArg())
+		fmt.Fprintf(&buf, "arg=%q\n", d.SingleArg())
 	case "pop-args-dur":
 		var dur time.Duration
 		d.PopArgs(&dur, &s)
@@ -127,6 +137,23 @@ pop-args 12 foo bar
 ----
 i=12 s="foo"
 remaining: pop-args bar
+
+# SingleArg and TwoArgs don't remove the arguments.
+single-arg -x 'a b'
+----
+arg="a b"
+remaining: single-arg -x 'a b'
+
+two-args (a, b) -x -- -c
+----
+a="(a, b)" b="-c"
+remaining: two-args -x -- (a, b) -c
+
+pop-then-single-arg a b
+----
+popped "a"
+arg="b"
+remaining: pop-then-single-arg b
 
 pop-args 12 foo
 ----
@@ -270,6 +297,14 @@ func TestPopArgsErrors(t *testing.T) {
 			`<string>:1: ScanArgs: unexpected arguments: bar baz (directive: scan-args 12 foo bar baz)`,
 		},
 		{"scan-args 12", `<string>:1: ScanArgs: not enough arguments (directive: scan-args 12)`},
+		{"single-arg -x", `<string>:1: SingleArg: not enough arguments (directive: single-arg -x)`},
+		{"single-arg a b c", `<string>:1: SingleArg: unexpected arguments: b c (directive: single-arg a b c)`},
+		{"two-args a", `<string>:1: TwoArgs: not enough arguments (directive: two-args a)`},
+		{"two-args a b c", `<string>:1: TwoArgs: unexpected arguments: c (directive: two-args a b c)`},
+		{
+			"pop-then-single-arg a",
+			`<string>:1: SingleArg: not enough arguments (directive: pop-then-single-arg a)`,
+		},
 		{
 			"scan-args-none a b",
 			`<string>:1: ScanArgs: unexpected arguments: a b (directive: scan-args-none a b)`,

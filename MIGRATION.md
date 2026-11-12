@@ -103,7 +103,8 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   `if d.HasFlag("x") { x := d.FlagValue[T]("x"); ... }`. `d.HasFlag` replaces
   `d.HasArg`, and `d.BoolFlag` checks for a flag without a value (e.g.
   `-verbose`). The other scanning methods (`Arg`, `CmdArg.Scan`, `FirstVal`,
-  etc.) are removed. Positional arguments can be retrieved with `PopArg`,
+  etc.) are removed. Positional arguments can be retrieved with `SingleArg`
+  and `TwoArgs` (for directives which take exactly one or two), `PopArg`,
   `PopArgs` and `ScanArgs`; the latter two parse values like `FlagValue` does
   (e.g. integers in base 10), including types that implement
   `encoding.TextUnmarshaler`. Note that `ScanArgs` now scans the positional
