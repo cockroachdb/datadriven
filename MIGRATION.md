@@ -88,10 +88,12 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
 - **The callback receives a wrapper.** `*datadriven.T` (or `*datadriven.B`)
   wraps the `*testing.T` (or `*testing.B`) and annotates messages with the
   position of the directive, so including `d.Pos` in messages is no longer
-  necessary (it is not printed twice). The wrapper implements `testing.TB`;
-  methods specific to `*testing.T` or `*testing.B` are available through the
-  `TB` field (e.g. `t.TB.Run(...)`, `b.TB.ReportMetric(...)`). A helper that
-  requires a `*testing.T` can be passed `t.TB`.
+  necessary (it is not printed twice). The position is that of the directive
+  which is running when the message is reported, so a logger used by background
+  goroutines should be given `t.TB` and not the wrapper. The wrapper implements
+  `testing.TB`; methods specific to `*testing.T` or `*testing.B` are available
+  through the `TB` field (e.g. `t.TB.Run(...)`, `b.TB.ReportMetric(...)`). A
+  helper that requires a `*testing.T` can be passed `t.TB`.
 - **`TestData.T`.** The wrapper is also available as `TestData.T`, which the
   `TestData` methods use to report errors. A `TestData` constructed manually
   (e.g. `TestData{Cmd: ...}`) must set `T` before using those methods.
@@ -109,17 +111,20 @@ perl -pi -e 's/\bdd\.ScanArgOr\b/dd.FlagValueOr/g; s/\bdd\.ScanArg\b/dd.FlagValu
   value is retrieved as a slice. Code that depends on whether an optional
   argument is present (e.g. `if d.MaybeScanArgs(...)`, or CockroachDB's
   `dd.ScanArgOpt`) becomes
-  `if d.HasFlag("x") { x := d.FlagValue[T]("x"); ... }`. `d.HasFlag` replaces
+  `if d.HasFlag("x") { x := d.FlagValue[T]("x"); ... }`. A `ScanArgs` with
+  several destinations (`d.ScanArgs(t, "x", &a, &b)`) becomes
+  `vals := d.FlagValue[[]T]("x")` and a check of `len(vals)` (use `[]string`
+  and parse the values if they have different types). `d.HasFlag` replaces
   `d.HasArg`, and `d.BoolFlag` checks for a flag without a value (e.g.
   `-verbose`). The other scanning methods (`Arg`, `CmdArg.Scan`, `FirstVal`,
-  etc.) are removed. Positional arguments can be retrieved with `SingleArg`
-  and `TwoArgs` (for directives which take exactly one or two), `PopArg`,
-  `PopArgs` and `ScanArgs`; the latter two parse values like `FlagValue` does
-  (e.g. integers in base 10), including types that implement
+  etc.) are removed. Positional arguments can be retrieved with `SingleArg` and
+  `TwoArgs` (for directives which take exactly one or two), `PopArg`, `PopArgs`
+  and `ScanArgs`; the latter two parse values like `FlagValue` does (e.g.
+  integers in base 10), including types that implement
   `encoding.TextUnmarshaler`. Note that `ScanArgs` now scans the positional
-  arguments: v1 code like `d.ScanArgs(t, "x", &x)` still compiles, but fails
-  at run time (with a message pointing to `FlagValue`). Some error messages
-  have changed.
+  arguments: v1 code like `d.ScanArgs(t, "x", &x)` still compiles, but fails at
+  run time (with a message pointing to `FlagValue`). Some error messages have
+  changed.
 - **Commands in the input.** Tests that parse each line of the input with
   `ParseLine` can use `for cmd := range d.InputDirectives()` instead: each
   line is returned as a `TestData`, errors are reported at the position of the

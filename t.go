@@ -31,7 +31,11 @@ import (
 // The position is that of the directive running at the time of the call, not
 // the directive for which the wrapper was passed to the callback. This means
 // that a wrapper retained by a long-lived object (e.g. one created by a setup
-// directive) reports the directive in which the failure actually happened.
+// directive) reports the directive in which the failure actually happened. It
+// also means that messages from background goroutines (e.g. the logger of a
+// component which does background work) are annotated with whatever directive
+// happens to be running; such a logger should use the underlying testing.TB
+// (the TB field) instead.
 //
 // *TBWrapper implements testing.TB: the other methods are forwarded to the
 // underlying testing.TB, and a *TBWrapper can be passed to helpers which take a
